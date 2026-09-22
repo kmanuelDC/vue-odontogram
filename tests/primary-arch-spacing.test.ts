@@ -9,7 +9,7 @@ describe('primary arch spacing', () => {
 
     for (const toothId of ['52', '62', '72', '82']) {
       expect(wrapper.get('[aria-label="Tooth ' + toothId + '"]').attributes('transform')).toBe(
-        'translate(-6 0) rotate(20 141.6 39.4)',
+        'translate(-6 0)',
       )
     }
 

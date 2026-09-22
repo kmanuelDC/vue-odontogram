@@ -219,6 +219,8 @@ function handleSelect(tooth: ToothDefinition): void {
 .odontogram {
   --odontogram-stroke-color: #8a98be;
   --odontogram-selected-color: #c6ccf8;
+  --odontogram-selected-stroke-color: #b8c0cc;
+  --odontogram-focus-outline-color: #cbd5e1;
   width: 100%;
   color: var(--odontogram-stroke-color);
 }
@@ -227,6 +229,8 @@ function handleSelect(tooth: ToothDefinition): void {
   display: block;
   width: 100%;
   height: auto;
+  margin-top: 0.5rem;
+  overflow: visible;
   user-select: none;
   touch-action: manipulation;
 }
@@ -247,10 +251,13 @@ function handleSelect(tooth: ToothDefinition): void {
   fill: var(--odontogram-selected-color);
 }
 
+.odontogram-tooth:focus,
 .odontogram-tooth:focus-visible {
-  outline: 3px solid currentColor;
+  outline: 0.5px solid rgb(184 167 232 / 70%);
+  filter: drop-shadow(0 0 0.5px rgb(221 214 254 / 60%)) drop-shadow(0 0 1.5px rgb(167 139 250 / 21%));
 }
 </style>
+
 
 
 

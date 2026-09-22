@@ -30,7 +30,10 @@ const emit = defineEmits<{
   mouseleave: [tooth: ToothDefinition, event: MouseEvent]
 }>()
 
-const strokeColor = computed(() => props.condition?.outlineColor ?? 'currentColor')
+const strokeColor = computed(() =>
+  props.condition?.outlineColor ??
+  (props.selected ? 'var(--odontogram-selected-stroke-color, #b8c0cc)' : 'currentColor'),
+)
 const fillColor = computed(() => props.condition?.fillColor ?? 'currentColor')
 
 /**
@@ -54,11 +57,10 @@ const primaryCanineTransformByQuadrant: Readonly<Record<number, string>> = {
 const primaryCentralIncisorTransform = 'translate(366 0) scale(-1 1)'
 
 /**
- * Each lateral incisor moves away from the midline only on the x-axis and
- * rotates twenty degrees around its own center. The horizontal reflection makes
- * the upper-left lateral incisor rotate counterclockwise.
+ * Each lateral incisor moves away from the midline only on the x-axis. Its SVG
+ * geometry is already correctly aligned, so no local rotation is applied.
  */
-const primaryLateralIncisorTransform = 'translate(-6 0) rotate(20 141.6 39.4)'
+const primaryLateralIncisorTransform = 'translate(-6 0)'
 
 /**
  * Keeps 54/84 20 units left and 64/74 20 units right in screen space.
@@ -174,6 +176,7 @@ function handleKeydown(event: KeyboardEvent): void {
     />
   </g>
 </template>
+
 
 
 

@@ -5,13 +5,13 @@ Componente Vue 3 para visualizar y seleccionar dientes mediante SVG e identifica
 ## Instalación
 
 ```bash
-npm install @kmdk/vue-odontogram
+npm install @kmanueldc/vue-odontogram
 ```
 
 Importa los estilos del paquete:
 
 ```ts
-import '@kmdk/vue-odontogram/style.css'
+import '@kmanueldc/vue-odontogram/style.css'
 ```
 
 ## Uso básico
@@ -19,8 +19,8 @@ import '@kmdk/vue-odontogram/style.css'
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Odontogram } from '@kmdk/vue-odontogram'
-import '@kmdk/vue-odontogram/style.css'
+import { Odontogram } from '@kmanueldc/vue-odontogram'
+import '@kmanueldc/vue-odontogram/style.css'
 
 const selectedTeeth = ref<string[]>([])
 </script>
@@ -128,9 +128,13 @@ La selección usa los mismos IDs FDI en ambas denticiones. Se puede limitar a un
 | `change` | `string[]` con la nueva selección. |
 | `tooth-click` | `ToothDefinition`, seguido de `string[]` con la selección. |
 
-## SVG primarios: origen y licencia
+## Licencia y procedencia de los SVG
 
-Los dos datasets de cinco formas, `src/data/primary.ts` (Arch) y `src/data/primary-horizontal.ts` (Horizontal), son paths simplificados propios creados para prototipado. El dataset permanente sirve solo como referencia técnica bajo licencia MIT; no se incorporó una fuente pediátrica clínica externa ni se declara exactitud anatómica. Consulta [la nota de aproximación Arch](docs/primary-svg-approximation.md), [la aproximación Horizontal](docs/primary-horizontal-svg-approximation.md), [la composición Horizontal](docs/primary-horizontal-layout.md) y [el registro de fuentes](docs/primary-svg-sources.md) antes de redistribuir o considerar estos assets para uso clínico.
+El código propio de `@kmanueldc/vue-odontogram` se distribuye bajo licencia MIT; consulta [LICENSE](LICENSE).
+
+Las geometrías SVG permanentes de `src/data/permanent.ts` y `src/data/permanent-horizontal.ts` se portaron de [biomathcode/react-odontogram](https://github.com/biomathcode/react-odontogram), también bajo MIT © biomathcode. La atribución y la copia de esa licencia se conservan en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Los dos datasets pediátricos de cinco formas, `src/data/primary.ts` (Arch) y `src/data/primary-horizontal.ts` (Horizontal), son paths simplificados propios creados para prototipado. Son **provisionales**, no tienen validación odontológica y no deben emplearse para diagnóstico, tratamiento ni como representación clínica definitiva. Consulta [la nota de aproximación Arch](docs/primary-svg-approximation.md), [la aproximación Horizontal](docs/primary-horizontal-svg-approximation.md), [la composición Horizontal](docs/primary-horizontal-layout.md) y [el registro de fuentes](docs/primary-svg-sources.md) antes de redistribuirlos o considerarlos para uso clínico.
 
 ## Dentición mixta
 
@@ -154,6 +158,8 @@ npm run test
 npm run build
 npm run build:playground
 ```
+
+
 
 
 

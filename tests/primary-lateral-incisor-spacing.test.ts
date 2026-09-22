@@ -3,10 +3,10 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import Odontogram from '../src/components/Odontogram.vue'
 
-const lateralIncisorTransform = 'translate(-6 0) rotate(20 141.6 39.4)'
+const lateralIncisorTransform = 'translate(-6 0)'
 
 describe('primary lateral incisor spacing', () => {
-  it('moves each lateral incisor away from the midline with a twenty-degree local rotation', () => {
+  it('keeps each lateral incisor straight while moving it away from the midline', () => {
     const wrapper = mount(Odontogram, { props: { dentition: 'primary' } })
 
     for (const toothId of ['52', '62', '82', '72']) {

@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import Odontogram from '../src/components/Odontogram.vue'
@@ -38,7 +38,14 @@ describe('Odontogram', () => {
     expect(wrapper.attributes('aria-multiselectable')).toBe('false')
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([['12']])
   })
+  it('uses the soft gray border for a selected tooth', () => {
+    const wrapper = mount(Odontogram, { props: { modelValue: ['11'] } })
+    const tooth = wrapper.get('[aria-label="Tooth 11"]')
+
+    expect(tooth.attributes('style')).toContain('var(--odontogram-selected-stroke-color, #b8c0cc)')
+  })
 })
+
 
 
 
