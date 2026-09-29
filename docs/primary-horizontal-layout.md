@@ -4,8 +4,8 @@
 
 Esta composición ubica exclusivamente el dataset provisional
 `primaryHorizontalTeethPaths`. Es independiente de `primaryArchLayoutDefinition`
-y de los layouts permanentes. Todavía no está habilitada en el componente; su
-conexión corresponde a la Fase 35.
+y de los layouts permanentes. Está habilitada en el componente con
+`<Odontogram dentition="primary" layout="horizontal" />` (Fase 35).
 
 ## Espacio SVG
 

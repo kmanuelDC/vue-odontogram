@@ -10,9 +10,11 @@ describe('dentition and layout capabilities', () => {
     expect(supportedLayoutsByDentition).toEqual({
       permanent: ['arch', 'horizontal'],
       primary: ['arch', 'horizontal'],
+      mixed: ['arch', 'horizontal'],
     })
     expect(isLayoutSupported('permanent', 'horizontal')).toBe(true)
     expect(isLayoutSupported('primary', 'horizontal')).toBe(true)
+    expect(isLayoutSupported('mixed', 'arch')).toBe(true)
   })
 
   it('keeps every supported selection without fallback', () => {

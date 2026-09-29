@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import type { ToothDefinition } from '../types/odontogram'
+import type {
+  OdontogramLabels,
+  ToothDefinition,
+  ToothState,
+  ToothVisualCondition,
+} from '../types/odontogram'
+import { defaultOdontogramLabels } from '../utils/labels'
+
+export type { ToothVisualCondition }
 
 export type TooltipPlacement =
   | 'top'
@@ -16,12 +24,6 @@ export type TooltipPlacement =
   | 'left-start'
   | 'left-end'
 
-export interface ToothVisualCondition {
-  label?: string
-  fillColor?: string
-  outlineColor?: string
-}
-
 export interface TooltipAnchorRect {
   top: number
   right: number
@@ -35,16 +37,26 @@ const props = withDefaults(
     tooth?: ToothDefinition
     selected?: boolean
     condition?: ToothVisualCondition
+    state?: ToothState
+    /** Names of the findings on the tooth. */
+    findings?: readonly string[]
+    /** Tooth number in the chart's notation; the FDI ID by default. */
+    number?: string
     anchorRect?: TooltipAnchorRect
     placement?: TooltipPlacement
     margin?: number
+    labels?: OdontogramLabels
   }>(),
   {
     selected: false,
     condition: undefined,
+    state: 'present',
+    findings: () => [],
+    number: undefined,
     anchorRect: undefined,
     placement: 'top',
     margin: 10,
+    labels: () => defaultOdontogramLabels,
   },
 )
 
@@ -107,11 +119,20 @@ watch(
       opacity: coordinates.left === -9999 ? 0 : 1,
     }"
   >
-    <slot :tooth="tooth" :selected="selected" :condition="condition">
-      <div>Tooth: {{ tooth.id }}</div>
-      <div>Type: {{ tooth.type }}</div>
-      <div>Selected: {{ selected ? 'Yes' : 'No' }}</div>
-      <div v-if="condition?.label">Condition: {{ condition.label }}</div>
+    <slot
+      :tooth="tooth"
+      :selected="selected"
+      :condition="condition"
+      :state="state"
+      :findings="findings"
+      :number="number ?? tooth.id"
+    >
+      <div>{{ labels.tooth }}: {{ number ?? tooth.id }}</div>
+      <div>{{ labels.type }}: {{ labels.toothTypes[tooth.type] ?? tooth.type }}</div>
+      <div v-if="state !== 'present'">{{ labels.state }}: {{ labels.states[state] }}</div>
+      <div v-if="findings.length">{{ labels.findings }}: {{ findings.join(', ') }}</div>
+      <div>{{ labels.selected }}: {{ selected ? labels.yes : labels.no }}</div>
+      <div v-if="condition?.label">{{ labels.condition }}: {{ condition.label }}</div>
     </slot>
     <span
       aria-hidden="true"

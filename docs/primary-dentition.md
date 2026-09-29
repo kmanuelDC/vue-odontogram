@@ -21,7 +21,7 @@ Cada cuadrante tiene cinco posiciones: incisivo central, incisivo lateral, canin
 
 | Layout | Dataset | ViewBox | Estado |
 | --- | --- | --- | --- |
-| `arch` | `primaryTeethPaths` | `0 0 409 500` | Provisional |
+| `arch` | `primaryTeethPaths` | `0 0 409 461` | Provisional |
 | `horizontal` | `primaryHorizontalTeethPaths` | `0 0 520 180` | Provisional |
 
 `<Odontogram dentition="primary" layout="horizontal" />` renderiza el

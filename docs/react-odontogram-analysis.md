@@ -139,4 +139,4 @@ La Tarea 02 puede crear una librería Vue limpia sin copiar componentes React. P
 > Nota histórica: `react-odontogram-main` fue retirado del workspace después de
 > portar los datasets necesarios. Esta auditoría y los avisos de licencia
 > conservan su procedencia; el build, las pruebas y la publicación de
-> `@kmdk/vue-odontogram` no dependen de esa carpeta.
+> `@kmanueldc/vue-odontogram` no dependen de esa carpeta.

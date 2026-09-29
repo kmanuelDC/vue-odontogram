@@ -1,48 +1,68 @@
-# Diseño para dentición mixta
+# Dentición mixta
 
-## Estado actual
+## Estado
 
-`Odontogram` renderiza una dentición por vez: `permanent` (32 piezas) o `primary` (20 piezas provisionales). Ambas denticiones admiten `arch` y `horizontal` con datasets propios. El tipo de dominio también contiene `Dentition = 'mixed'`, pero no existe una interfaz ni layout mixto activo.
+Implementada el 2026-09-29 con la composición aprobada **filas NTS**:
+`dentition="mixed"` combina los datasets permanente y primario, y la prop
+`teeth` declara qué piezas están en boca.
 
-La dentición mixta no será una selección parcial de un dataset ni una variante de geometría permanente. Debe coexistir con piezas explícitas de ambos datasets, conservando la identidad FDI de cada una.
+La dentición mixta no es una selección parcial de un dataset ni una variante
+de geometría permanente: cada pieza usa la forma de su propio dataset y
+conserva su identidad FDI.
 
-## Modelo propuesto
+## API
 
-La futura API recibirá una colección explícita de piezas:
-
-```ts
-type MixedOdontogramInput = {
-  dentition: 'mixed'
-  teeth: ToothDefinition[]
-}
+```vue
+<Odontogram dentition="mixed" layout="horizontal" :teeth="['16', '11', '55', '54', '53']" />
 ```
 
-Ejemplo conceptual:
+`teeth` recibe IDs FDI (`string[]`), no `ToothDefinition[]` como proponía el
+diseño inicial. La librería resuelve la forma de cada ID desde el dataset y
+el layout que le corresponden, de modo que la aplicación no manipula
+geometría SVG y no puede mezclar formas de otra dentición. Sin `teeth` se
+dibujan las 52 piezas, como en la ficha NTS.
 
-```ts
-const teeth: ToothDefinition[] = [
-  permanentTooth11,
-  permanentTooth12,
-  primaryTooth53,
-  primaryTooth54,
-  primaryTooth55,
-  permanentTooth16,
-]
-```
+Como un ID FDI es globalmente único, `v-model`, `v-model:surfaces`,
+`toothStates`, `findings`, `conditions` y los eventos siguen usando `string[]`
+o mapas por ID, sin prefijos ni claves compuestas.
 
-Cada definición conserva `id`, `dentition`, `quadrant`, `position`, `type` y `shape`. Como un ID FDI es globalmente único, `v-model`, condiciones y eventos pueden seguir usando `string[]`, sin prefijos técnicos ni claves compuestas.
+## Composición
 
-## Reglas para coexistencia
+Definida en `src/utils/mixed-layout.ts`. No añade geometría: cada cuadrante
+reutiliza el dataset y el transform de su composición original, envuelto en
+una escala y una traslación.
 
-1. La presencia de una pieza se declara explícitamente; un hueco no se rellena con una geometría de otra dentición.
-2. La forma se obtiene del dataset correspondiente por dentición y layout (`permanent` o `primary`), nunca por `slice` ni reutilizando premolares como molares temporales.
-3. El layout mixto deberá resolver posición, orden y superposición por pieza y cuadrante, sin deducirlos solo de `dentition === 'mixed'`.
-4. La selección y las condiciones se indexan por ID FDI, por lo que pueden abarcar ambos conjuntos sin cambiar la API de eventos.
-5. Los SVG pediátricos provisionales no habilitan por sí mismos una UI mixta clínica; el diseño definitivo exige validación odontológica y composición visual aprobada.
+- `horizontal` (viewBox `0 0 900 374`): cuatro filas, de arriba abajo
+  `18–28`, `55–65`, `85–75` y `48–38`. Las filas temporales se escalan ×1,1
+  sobre la línea media para que 55/65/75/85 queden alineados con los segundos
+  premolares que los reemplazan. Entre una fila permanente y la temporal
+  vecina hay 58 unidades (números permanentes y diagramas de superficie
+  temporales); entre las filas temporales, 40 (los números de cada una).
+- `arch` (viewBox `0 0 409 694`): las arcadas temporales, a escala 0,58,
+  dentro de las permanentes, centradas en la misma línea media y simétricas
+  respecto al eje horizontal.
 
-## Próxima evolución
+## Reglas de coexistencia
 
-Antes de aceptar `:teeth="mixedTeeth"` en el componente se necesita definir y probar: composición en arco por etapas de erupción, reglas de reemplazo entre piezas, huecos, escalas, accesibilidad y condiciones clínicas. No se añadirá una rama experimental a `Odontogram` hasta entonces.
+1. La presencia de una pieza se declara explícitamente con `teeth`; un hueco
+   no se rellena con una geometría de otra dentición.
+2. La forma se obtiene del dataset de su dentición, nunca por `slice` ni
+   reutilizando premolares como molares temporales.
+3. Cada pieza pertenece a una **fila** (`ToothRow`): una arcada de una
+   dentición (`upper-permanent`, `upper-primary`…). Las filas ordenan las
+   piezas, orientan números, símbolos y diagramas, y guían la navegación con
+   `↑`/`↓`. Los hallazgos de tramo y entre dos piezas deben estar en una
+   misma fila.
+4. La selección y las condiciones se indexan por ID FDI y pueden abarcar
+   ambos conjuntos sin cambiar la API de eventos.
+5. Los SVG pediátricos siguen siendo provisionales: la composición es de
+   desarrollo y necesita validación odontológica antes del uso clínico.
 
+## Limitaciones conocidas
 
-
+- En `arch`, los diagramas de superficie y las siglas de las piezas
+  temporales se dibujan hacia fuera de su arcada, en el espacio de los
+  números permanentes, y pueden solaparse con ellos. Para registrar
+  superficies en dentición mixta se recomienda `horizontal`.
+- No hay reglas de reemplazo ni etapas de erupción: la aplicación decide qué
+  piezas incluir en `teeth`.

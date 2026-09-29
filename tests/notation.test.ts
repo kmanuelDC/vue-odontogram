@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildToothId } from '../src/utils/notation'
+import { buildToothId, formatToothNumber, getPalmerQuadrant } from '../src/utils/notation'
 import { getQuadrant } from '../src/utils/quadrants'
 
 describe('getQuadrant', () => {
@@ -49,10 +49,68 @@ describe('buildToothId', () => {
     expect(() => buildToothId('primary', 5, 6, 'FDI')).toThrow(RangeError)
   })
 
-  it('keeps unimplemented notations explicit', () => {
+  it('always builds FDI IDs', () => {
+    expect(buildToothId('permanent', 1, 1)).toBe('11')
     expect(() => buildToothId('permanent', 1, 1, 'Universal')).toThrow(
-      'Universal notation is not implemented yet.',
+      'Tooth IDs are always FDI; format Universal numbers with formatToothNumber.',
     )
+  })
+})
+
+const permanentIds = [1, 2, 3, 4].flatMap((quadrant) =>
+  Array.from({ length: 8 }, (_, index) => buildToothId('permanent', quadrant, index + 1)),
+)
+const primaryIds = [5, 6, 7, 8].flatMap((quadrant) =>
+  Array.from({ length: 5 }, (_, index) => buildToothId('primary', quadrant, index + 1)),
+)
+
+describe('formatToothNumber', () => {
+  it('keeps FDI IDs as they are', () => {
+    expect(formatToothNumber('11', 'FDI')).toBe('11')
+    expect(formatToothNumber('85', 'FDI', 'text')).toBe('85')
+  })
+
+  it.each([
+    ['18', '1'], ['11', '8'], ['21', '9'], ['28', '16'],
+    ['38', '17'], ['31', '24'], ['41', '25'], ['48', '32'],
+  ])('writes permanent %s as Universal %s', (id, expected) => {
+    expect(formatToothNumber(id, 'Universal')).toBe(expected)
+  })
+
+  it.each([
+    ['55', 'A'], ['51', 'E'], ['61', 'F'], ['65', 'J'],
+    ['75', 'K'], ['71', 'O'], ['81', 'P'], ['85', 'T'],
+  ])('writes primary %s as Universal %s', (id, expected) => {
+    expect(formatToothNumber(id, 'Universal')).toBe(expected)
+  })
+
+  it('gives every tooth a distinct Universal number', () => {
+    const permanent = permanentIds.map((id) => formatToothNumber(id, 'Universal'))
+    const primary = primaryIds.map((id) => formatToothNumber(id, 'Universal'))
+
+    expect(new Set(permanent)).toEqual(new Set(Array.from({ length: 32 }, (_, index) => String(index + 1))))
+    expect(new Set(primary)).toEqual(new Set('ABCDEFGHIJKLMNOPQRST'.split('')))
+  })
+
+  it.each([
+    ['16', '6┘', 'UR6'], ['21', '└1', 'UL1'], ['34', '┌4', 'LL4'], ['48', '8┐', 'LR8'],
+    ['55', 'E┘', 'URE'], ['61', '└A', 'ULA'], ['73', '┌C', 'LLC'], ['84', 'D┐', 'LRD'],
+  ])('writes %s in Palmer as %s (%s)', (id, symbol, text) => {
+    expect(formatToothNumber(id, 'Palmer')).toBe(symbol)
+    expect(formatToothNumber(id, 'Palmer', 'text')).toBe(text)
+  })
+
+  it('maps quadrants for Palmer', () => {
+    expect(['11', '21', '31', '41', '51', '61', '71', '81'].map(getPalmerQuadrant)).toEqual([
+      'upper-right', 'upper-left', 'lower-left', 'lower-right',
+      'upper-right', 'upper-left', 'lower-left', 'lower-right',
+    ])
+  })
+
+  it('rejects IDs that are not FDI teeth', () => {
+    for (const id of ['19', '56', '91', '1', 'A']) {
+      expect(() => formatToothNumber(id, 'Universal'), id).toThrow(RangeError)
+    }
   })
 })
 

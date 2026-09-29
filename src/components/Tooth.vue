@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ToothDefinition } from '../types/odontogram'
-import type { OdontogramLayout } from '../utils/layout'
+import type { ToothDefinition, ToothState } from '../types/odontogram'
+import { toothNavigationKeys, type ToothNavigationKey } from '../utils/navigation'
+import { absentToothStates } from '../utils/state-marks'
 
 export interface ToothCondition {
   fillColor?: string
@@ -14,20 +15,57 @@ const props = withDefaults(
     selected?: boolean
     disabled?: boolean
     condition?: ToothCondition
-    layout?: OdontogramLayout
+    /** Presentation transform supplied by the layout, after the shape's own. */
+    layoutTransform?: string
+    /** Prefix of the accessible name, e.g. "Tooth" → "Tooth 11". */
+    label?: string
+    /** Whether Tab reaches this tooth; a chart keeps a single tab stop. */
+    focusable?: boolean
+    /** Presence status; it never changes selection or interaction. */
+    state?: ToothState
+    /** Name of a non-present state, appended to the accessible name. */
+    stateLabel?: string
+    /** Extra text appended to the accessible name, e.g. the tooth findings. */
+    description?: string
+    /** Number shown in the title, in the chart's notation; the FDI ID by default. */
+    number?: string
+    /** Number read in the accessible name; `number` by default. */
+    spokenNumber?: string
   }>(),
   {
     selected: false,
     disabled: false,
     condition: undefined,
-    layout: 'arch',
+    layoutTransform: undefined,
+    label: 'Tooth',
+    focusable: true,
+    state: 'present',
+    stateLabel: undefined,
+    description: undefined,
+    number: undefined,
+    spokenNumber: undefined,
   },
+)
+
+/** Missing and extracted teeth keep only a dashed outline, without crown. */
+const absent = computed(() => absentToothStates.has(props.state))
+const accessibleName = computed(() =>
+  [
+    `${props.label} ${props.spokenNumber ?? props.number ?? props.tooth.id}`,
+    props.state !== 'present' ? props.stateLabel : undefined,
+    props.description,
+  ]
+    .filter(Boolean)
+    .join(', '),
 )
 
 const emit = defineEmits<{
   select: [tooth: ToothDefinition]
   mouseenter: [tooth: ToothDefinition, event: MouseEvent]
   mouseleave: [tooth: ToothDefinition, event: MouseEvent]
+  focus: [tooth: ToothDefinition, event: FocusEvent]
+  blur: [tooth: ToothDefinition, event: FocusEvent]
+  navigate: [tooth: ToothDefinition, key: ToothNavigationKey]
 }>()
 
 const strokeColor = computed(() =>
@@ -36,70 +74,8 @@ const strokeColor = computed(() =>
 )
 const fillColor = computed(() => props.condition?.fillColor ?? 'currentColor')
 
-/**
- * The provisional canine moves only on the x-axis to keep a compact
- * two-unit clearance from the lateral incisor.
- * The same local adjustment is used in all quadrants so the lower arch is
- * an exact vertical reflection of the upper curve.
- */
-const primaryCanineTransformByQuadrant: Readonly<Record<number, string>> = {
-  5: 'translate(209 20) scale(-1 1)',
-  6: 'translate(209 20) scale(-1 1)',
-  8: 'translate(209 20) scale(-1 1)',
-  7: 'translate(209 20) scale(-1 1)',
-}
-
-/**
- * Mirrors each central incisor while moving it four units away from the
- * midline. The pair gains eight units of clearance, about 20% of its
- * provisional width.
- */
-const primaryCentralIncisorTransform = 'translate(366 0) scale(-1 1)'
-
-/**
- * Each lateral incisor moves away from the midline only on the x-axis. Its SVG
- * geometry is already correctly aligned, so no local rotation is applied.
- */
-const primaryLateralIncisorTransform = 'translate(-6 0)'
-
-/**
- * Keeps 54/84 20 units left and 64/74 20 units right in screen space.
- * Horizontal quadrant reflection reverses the local x-axis for 64 and 74.
- */
-const primaryFirstMolarTransformByQuadrant: Readonly<Record<number, string>> = {
-  5: 'translate(-20 -4)',
-  6: 'translate(-20 -4)',
-  8: 'translate(-20 -4)',
-  7: 'translate(-20 -4)',
-}
-
-const primarySecondMolarTransform = 'translate(0 6)'
-
-const shapeTransform = computed(() => {
-  if (props.layout !== 'arch') {
-    return undefined
-  }
-
-  if (props.tooth.type === 'Primary Central Incisor') {
-    return primaryCentralIncisorTransform
-  }
-
-  if (props.tooth.type === 'Primary Lateral Incisor') {
-    return primaryLateralIncisorTransform
-  }
-
-  if (props.tooth.type === 'Primary Canine') {
-    return primaryCanineTransformByQuadrant[props.tooth.quadrant]
-  }
-
-  if (props.tooth.type === 'Primary First Molar') {
-    return primaryFirstMolarTransformByQuadrant[props.tooth.quadrant]
-  }
-
-  return props.tooth.type === 'Primary Second Molar' ? primarySecondMolarTransform : undefined
-})
 const toothTransform = computed(() => {
-  const transforms = [props.tooth.shape.transform, shapeTransform.value].filter(
+  const transforms = [props.tooth.shape.transform, props.layoutTransform].filter(
     (transform): transform is string => Boolean(transform),
   )
 
@@ -116,6 +92,9 @@ function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
     select()
+  } else if (toothNavigationKeys.has(event.key)) {
+    event.preventDefault()
+    emit('navigate', props.tooth, event.key as ToothNavigationKey)
   }
 }
 </script>
@@ -126,38 +105,47 @@ function handleKeydown(event: KeyboardEvent): void {
     :class="{
       'odontogram-tooth--selected': selected,
       'odontogram-tooth--disabled': disabled,
+      'odontogram-tooth--absent': absent,
+      [`odontogram-tooth--${state}`]: state !== 'present',
     }"
     :role="disabled ? undefined : 'option'"
-    :aria-label="`Tooth ${tooth.id}`"
+    :aria-label="accessibleName"
+    :data-tooth-state="state"
     :aria-selected="disabled ? undefined : selected"
     :aria-disabled="disabled"
-    :tabindex="disabled ? -1 : 0"
+    :tabindex="disabled || !focusable ? -1 : 0"
+    :data-tooth-id="tooth.id"
     :style="{ cursor: disabled ? 'default' : 'pointer', color: strokeColor }"
     :transform="toothTransform"
     @click="select"
     @keydown="handleKeydown"
     @mouseenter="emit('mouseenter', tooth, $event)"
     @mouseleave="emit('mouseleave', tooth, $event)"
+    @focus="emit('focus', tooth, $event)"
+    @blur="emit('blur', tooth, $event)"
   >
-    <title>{{ tooth.id }}</title>
+    <title>{{ number ?? tooth.id }}</title>
 
     <path
       :stroke="strokeColor"
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
+      :stroke-dasharray="absent ? '4 3' : undefined"
       :d="tooth.shape.outlinePath"
     />
 
+    <!-- Absent teeth keep the shadow only to show hover and selection. -->
     <path
       v-if="tooth.shape.shadowPath"
       :fill="fillColor"
       :d="tooth.shape.shadowPath"
-      :data-colored="condition ? 'true' : undefined"
-      :style="{ opacity: condition ? 1 : undefined }"
+      :data-colored="condition && !absent ? 'true' : undefined"
+      :style="{ opacity: condition && !absent ? 1 : undefined }"
     />
 
-    <template v-if="Array.isArray(tooth.shape.lineHighlightPath)">
+    <template v-if="absent" />
+    <template v-else-if="Array.isArray(tooth.shape.lineHighlightPath)">
       <path
         v-for="path in tooth.shape.lineHighlightPath"
         :key="path"
@@ -176,34 +164,3 @@ function handleKeydown(event: KeyboardEvent): void {
     />
   </g>
 </template>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

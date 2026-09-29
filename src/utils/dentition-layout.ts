@@ -1,7 +1,7 @@
 import type { OdontogramLayout } from './layout'
 
 /** Dentitions that have an SVG composition available to the component. */
-export type RenderableDentition = 'permanent' | 'primary'
+export type RenderableDentition = 'permanent' | 'primary' | 'mixed'
 
 /**
  * Only these combinations may select a dataset and a composition internally.
@@ -21,6 +21,7 @@ export interface DentitionLayoutResolution {
 export const supportedLayoutsByDentition = {
   permanent: ['arch', 'horizontal'],
   primary: ['arch', 'horizontal'],
+  mixed: ['arch', 'horizontal'],
 } as const satisfies Readonly<Record<RenderableDentition, readonly OdontogramLayout[]>>
 
 export function isLayoutSupported(

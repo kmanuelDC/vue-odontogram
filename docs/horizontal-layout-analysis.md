@@ -88,5 +88,5 @@ específica; el alcance de la Fase 19 es el odontograma completo.
 
 La copia local `react-odontogram-main` fue retirada después de portar los
 assets necesarios. Esta documentación conserva la procedencia histórica y la
-referencia MIT; el build, las pruebas y el paquete `@kmdk/vue-odontogram` no
+referencia MIT; el build, las pruebas y el paquete `@kmanueldc/vue-odontogram` no
 dependen de ese directorio.

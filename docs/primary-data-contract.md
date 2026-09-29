@@ -21,7 +21,9 @@ un cuadrante ni genera FDI.
 | Permanente | 1–8 |
 | Temporal | 1–5 |
 
-La validación de FDI ya aplica estos límites. El dataset temporal seguirá vacío
-hasta que se autoricen cinco SVG pediátricos; el contrato admite esas formas,
-pero no convierte los datos pendientes en geometría renderizable.
+La validación de FDI ya aplica estos límites. Los datasets temporales
+`primaryTeethPaths` (Arch) y `primaryHorizontalTeethPaths` (Horizontal)
+contienen las cinco formas con los tipos `Primary*` y posiciones 1–5. Son
+geometrías **provisionales**, sin validación odontológica, hasta que se
+autoricen SVG pediátricos definitivos.
 
