@@ -32,12 +32,13 @@ Definida en `src/utils/mixed-layout.ts`. No añade geometría: cada cuadrante
 reutiliza el dataset y el transform de su composición original, envuelto en
 una escala y una traslación.
 
-- `horizontal` (viewBox `0 0 900 374`): cuatro filas, de arriba abajo
+- `horizontal` (viewBox `0 0 900 418`): cuatro filas, de arriba abajo
   `18–28`, `55–65`, `85–75` y `48–38`. Las filas temporales se escalan ×1,1
   sobre la línea media para que 55/65/75/85 queden alineados con los segundos
   premolares que los reemplazan. Entre una fila permanente y la temporal
-  vecina hay 58 unidades (números permanentes y diagramas de superficie
-  temporales); entre las filas temporales, 40 (los números de cada una).
+  vecina hay 80 unidades (números permanentes y diagramas de superficie
+  temporales, con sus siglas); entre las filas temporales, 40 (los números
+  de cada una).
 - `arch` (viewBox `0 0 409 694`): las arcadas temporales, a escala 0,58,
   dentro de las permanentes, centradas en la misma línea media y simétricas
   respecto al eje horizontal.

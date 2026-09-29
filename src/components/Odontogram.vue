@@ -22,8 +22,9 @@ import { getToothStateMarks, resolveToothState } from '../utils/state-marks'
 import { ntsPeruFindingCatalog } from '../catalogs/nts-peru'
 import type { FindingCatalog, OdontogramFinding } from '../types/findings'
 import { getFindingIcon } from '../utils/findings'
-import type { OdontogramSurfaces, ToothSurface } from '../types/surfaces'
-import { getSurfaceName, toggleSurface } from '../utils/surfaces'
+import { getToothRecord } from '../utils/finding-records'
+import type { OdontogramSurfaces, SurfaceShapeKind, ToothSurface } from '../types/surfaces'
+import { getSurfaceName, surfaceCenter, toggleSurface, type SurfaceDiagram } from '../utils/surfaces'
 import { formatToothNumber } from '../utils/notation'
 import { absentToothStates } from '../utils/state-marks'
 import ConditionLabels from './ConditionLabels.vue'
@@ -50,6 +51,10 @@ const props = withDefaults(
     findings?: OdontogramFinding[]
     findingCatalog?: FindingCatalog
     showSurfaces?: boolean
+    /** Draws each surface's letter (V, M, O/I, D, L/P) on the chart diagrams. */
+    showSurfaceLetters?: boolean
+    /** Shape of the surface diagrams: `square` (default) or `circle`. */
+    surfaceShape?: SurfaceShapeKind
     surfaces?: OdontogramSurfaces
     teeth?: string[]
   }>(),
@@ -70,6 +75,8 @@ const props = withDefaults(
     findings: undefined,
     findingCatalog: () => ntsPeruFindingCatalog,
     showSurfaces: false,
+    showSurfaceLetters: false,
+    surfaceShape: 'square',
     surfaces: () => ({}),
     teeth: undefined,
   },
@@ -93,6 +100,13 @@ defineSlots<{
     findings: readonly string[]
     /** Tooth number in the chart's notation; `tooth.id` stays FDI. */
     number: string
+    /**
+     * Hovered or focused surface, if the tooltip is for a surface; then
+     * `selected` and `findings` refer to that surface.
+     */
+    surface?: ToothSurface
+    /** Clinical name of `surface` on the tooth, e.g. "Palatal". */
+    surfaceName?: string
   }) => unknown
   /** SVG content drawn above the teeth, in the layout's viewBox coordinates. */
   overlay?: (props: {
@@ -100,6 +114,8 @@ defineSlots<{
     viewBox: Box
     dentition: RenderableDentition
     layout: OdontogramLayout
+    /** Surface diagrams drawn with `showSurfaces`, with their centers and boxes. */
+    surfaceDiagrams: readonly SurfaceDiagram[]
   }) => unknown
 }>()
 
@@ -125,6 +141,7 @@ const {
   findingCatalog: () => props.findingCatalog,
   showSurfaces: () => props.showSurfaces,
   teeth: () => props.teeth,
+  surfaceShape: () => props.surfaceShape,
 })
 
 /**
@@ -176,6 +193,20 @@ function numberOf(toothId: string): string {
 function spokenNumberOf(toothId: string): string {
   return formatToothNumber(toothId, props.notation, 'text')
 }
+
+/** Letters of every surface of the chart diagrams, drawn above the findings. */
+const surfaceLetters = computed(() =>
+  props.showSurfaceLetters
+    ? surfaceDiagrams.value.flatMap((diagram) =>
+        diagram.surfaces.map((shape) => ({
+          key: `${diagram.toothId}:${shape.surface}`,
+          ...surfaceCenter(shape),
+          fontSize: diagram.size * 0.24,
+          text: resolvedLabels.value.surfaceLetters[shape.name],
+        })),
+      )
+    : [],
+)
 
 /** Missing and extracted teeth have no surfaces to select. */
 const inactiveSurfaceTeeth = computed(
@@ -243,6 +274,8 @@ const resolvedLabels = computed(() => resolveOdontogramLabels(props.labels))
 const chartTitle = computed(() => resolvedLabels.value.chartTitles[props.dentition])
 
 const hoveredTooth = ref<ToothDefinition>()
+/** Surface of `hoveredTooth` under the pointer or focus, if any. */
+const hoveredSurface = ref<ToothSurface>()
 const hoveredAnchorRect = ref<TooltipAnchorRect>()
 
 const { isSelected, toggle } = useToothSelection({
@@ -259,6 +292,7 @@ function showToothTooltip(tooth: ToothDefinition, event: Event): void {
 
   const rect = target.getBoundingClientRect()
   hoveredTooth.value = tooth
+  hoveredSurface.value = undefined
   hoveredAnchorRect.value = {
     top: rect.top,
     right: rect.right,
@@ -269,8 +303,45 @@ function showToothTooltip(tooth: ToothDefinition, event: Event): void {
 
 function hideToothTooltip(): void {
   hoveredTooth.value = undefined
+  hoveredSurface.value = undefined
   hoveredAnchorRect.value = undefined
 }
+
+/** Shows the tooltip for a surface that is hovered or focused. */
+function showSurfaceTooltip(toothId: string, surface: ToothSurface, event: Event): void {
+  const tooth = toothById.value.get(toothId)
+  if (tooth) {
+    showToothTooltip(tooth, event)
+    hoveredSurface.value = surface
+  }
+}
+
+/** What the tooltip shows for the hovered surface. */
+const surfaceTooltip = computed(() => {
+  const tooth = hoveredTooth.value
+  const surface = hoveredSurface.value
+  if (!tooth || !surface) {
+    return undefined
+  }
+
+  const { surfaceNames, surfaceDescriptions, findingStatuses } = resolvedLabels.value
+  const name = getSurfaceName(surface, tooth.id)
+  const findings = getToothRecord(tooth.id, props.findings ?? [], props.findingCatalog).surfaces[surface].map(
+    ({ finding, definition }) => {
+      const status = finding.status ?? 'existing'
+      const findingName = definition?.name ?? finding.code
+      return status === 'existing' ? findingName : `${findingName} (${findingStatuses[status]})`
+    },
+  )
+
+  return {
+    surface,
+    name: surfaceNames[name],
+    description: surfaceDescriptions[name],
+    findings: [...new Set(findings)],
+    selected: props.surfaces[tooth.id]?.includes(surface) ?? false,
+  }
+})
 
 function handleSelect(tooth: ToothDefinition): void {
   const selectedTeeth = toggle(tooth.id)
@@ -366,6 +437,8 @@ function handleSelect(tooth: ToothDefinition): void {
         :labels="resolvedLabels"
         :spoken-number="spokenNumberOf"
         @toggle="handleSurfaceToggle"
+        @enter="showSurfaceTooltip"
+        @leave="hideToothTooltip"
       />
 
       <g v-if="findingLayout.findings.length" class="odontogram__findings" aria-hidden="true">
@@ -385,6 +458,22 @@ function handleSelect(tooth: ToothDefinition): void {
         >
           <FindingPrimitives :primitives="finding.primitives" />
         </g>
+      </g>
+
+      <g v-if="surfaceLetters.length" class="odontogram__surface-letters" aria-hidden="true">
+        <text
+          v-for="letter in surfaceLetters"
+          :key="letter.key"
+          class="odontogram__surface-letter"
+          :data-letter-for="letter.key"
+          :x="letter.x"
+          :y="letter.y"
+          :font-size="letter.fontSize"
+          text-anchor="middle"
+          dominant-baseline="central"
+        >
+          {{ letter.text }}
+        </text>
       </g>
 
       <g v-if="numberLabels.length" class="odontogram__numbers" aria-hidden="true">
@@ -419,6 +508,7 @@ function handleSelect(tooth: ToothDefinition): void {
           :viewBox="viewBoxRect"
           :dentition="dentition"
           :layout="layout"
+          :surface-diagrams="surfaceDiagrams"
         />
       </g>
     </svg>
@@ -427,11 +517,14 @@ function handleSelect(tooth: ToothDefinition): void {
       v-if="showTooltip"
       :active="Boolean(hoveredTooth)"
       :tooth="hoveredTooth"
-      :selected="hoveredTooth ? isSelected(hoveredTooth.id) : false"
+      :selected="surfaceTooltip ? surfaceTooltip.selected : hoveredTooth ? isSelected(hoveredTooth.id) : false"
       :condition="hoveredTooth ? conditionByTooth.get(hoveredTooth.id) : undefined"
       :state="hoveredTooth ? stateOf(hoveredTooth.id) : 'present'"
-      :findings="hoveredTooth ? findingNamesOf(hoveredTooth.id) : []"
+      :findings="surfaceTooltip ? surfaceTooltip.findings : hoveredTooth ? findingNamesOf(hoveredTooth.id) : []"
       :number="hoveredTooth ? numberOf(hoveredTooth.id) : undefined"
+      :surface="surfaceTooltip?.surface"
+      :surface-name="surfaceTooltip?.name"
+      :surface-description="surfaceTooltip?.description"
       :anchor-rect="hoveredAnchorRect"
       :labels="resolvedLabels"
     >
@@ -471,6 +564,7 @@ function handleSelect(tooth: ToothDefinition): void {
 }
 
 .odontogram__numbers,
+.odontogram__surface-letters,
 .odontogram__state-marks,
 .odontogram__findings {
   pointer-events: none;
@@ -602,6 +696,15 @@ function handleSelect(tooth: ToothDefinition): void {
 .odontogram-surfaces--inactive .odontogram-surface,
 .odontogram[aria-disabled='true'] .odontogram-surface {
   cursor: default;
+}
+
+.odontogram__surface-letter {
+  fill: var(--odontogram-surface-letter-color, #334155);
+  font-family: inherit;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 0.12em;
 }
 
 /* Overlays never block tooth clicks unless a child opts in. */

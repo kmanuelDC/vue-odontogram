@@ -6,6 +6,7 @@ import type {
   ToothState,
   ToothVisualCondition,
 } from '../types/odontogram'
+import type { ToothSurface } from '../types/surfaces'
 import { defaultOdontogramLabels } from '../utils/labels'
 
 export type { ToothVisualCondition }
@@ -42,6 +43,15 @@ const props = withDefaults(
     findings?: readonly string[]
     /** Tooth number in the chart's notation; the FDI ID by default. */
     number?: string
+    /**
+     * Hovered or focused surface. The tooltip then describes that surface:
+     * `selected` and `findings` refer to it instead of the whole tooth.
+     */
+    surface?: ToothSurface
+    /** Clinical name of `surface` on this tooth, e.g. "Palatal". */
+    surfaceName?: string
+    /** What `surface` is, from `labels.surfaceDescriptions`. */
+    surfaceDescription?: string
     anchorRect?: TooltipAnchorRect
     placement?: TooltipPlacement
     margin?: number
@@ -53,6 +63,9 @@ const props = withDefaults(
     state: 'present',
     findings: () => [],
     number: undefined,
+    surface: undefined,
+    surfaceName: undefined,
+    surfaceDescription: undefined,
     anchorRect: undefined,
     placement: 'top',
     margin: 10,
@@ -126,13 +139,25 @@ watch(
       :state="state"
       :findings="findings"
       :number="number ?? tooth.id"
+      :surface="surface"
+      :surface-name="surfaceName"
     >
-      <div>{{ labels.tooth }}: {{ number ?? tooth.id }}</div>
-      <div>{{ labels.type }}: {{ labels.toothTypes[tooth.type] ?? tooth.type }}</div>
-      <div v-if="state !== 'present'">{{ labels.state }}: {{ labels.states[state] }}</div>
-      <div v-if="findings.length">{{ labels.findings }}: {{ findings.join(', ') }}</div>
-      <div>{{ labels.selected }}: {{ selected ? labels.yes : labels.no }}</div>
-      <div v-if="condition?.label">{{ labels.condition }}: {{ condition.label }}</div>
+      <template v-if="surface">
+        <div>{{ labels.tooth }}: {{ number ?? tooth.id }}</div>
+        <div>{{ labels.surface }}: {{ surfaceName ?? surface }}</div>
+        <div v-if="surfaceDescription" class="odontogram-tooltip__description">{{ surfaceDescription }}</div>
+        <div v-if="state !== 'present'">{{ labels.state }}: {{ labels.states[state] }}</div>
+        <div v-if="findings.length">{{ labels.findings }}: {{ findings.join(', ') }}</div>
+        <div>{{ labels.selected }}: {{ selected ? labels.yes : labels.no }}</div>
+      </template>
+      <template v-else>
+        <div>{{ labels.tooth }}: {{ number ?? tooth.id }}</div>
+        <div>{{ labels.type }}: {{ labels.toothTypes[tooth.type] ?? tooth.type }}</div>
+        <div v-if="state !== 'present'">{{ labels.state }}: {{ labels.states[state] }}</div>
+        <div v-if="findings.length">{{ labels.findings }}: {{ findings.join(', ') }}</div>
+        <div>{{ labels.selected }}: {{ selected ? labels.yes : labels.no }}</div>
+        <div v-if="condition?.label">{{ labels.condition }}: {{ condition.label }}</div>
+      </template>
     </slot>
     <span
       aria-hidden="true"
@@ -155,6 +180,14 @@ watch(
   white-space: nowrap;
   box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
   transition: opacity 150ms ease;
+}
+
+/* Surface definitions are longer than the other lines, so they may wrap. */
+.odontogram-tooltip__description {
+  max-width: 16rem;
+  margin-bottom: 2px;
+  opacity: 0.8;
+  white-space: normal;
 }
 
 .odontogram-tooltip__arrow {

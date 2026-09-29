@@ -45,7 +45,7 @@ const permanentHeight = 150
  * Space between a permanent row and the primary row next to it: the
  * permanent numbers on one side and the primary surface diagrams on the other.
  */
-const outerBand = 58
+const outerBand = 80
 /** Space between both primary rows: the numbers of each. */
 const innerBand = 40
 

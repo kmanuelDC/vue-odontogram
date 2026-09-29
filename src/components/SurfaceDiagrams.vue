@@ -22,10 +22,18 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggle: [toothId: string, surface: ToothSurface]
+  /** A surface is hovered or focused; the event target is its polygon. */
+  enter: [toothId: string, surface: ToothSurface, event: Event]
+  leave: []
 }>()
 
 const root = ref<SVGGElement | null>(null)
 const active = ref<{ toothId: string; surface: ToothSurface }>()
+
+function handleFocus(toothId: string, surface: ToothSurface, event: FocusEvent): void {
+  active.value = { toothId, surface }
+  emit('enter', toothId, surface, event)
+}
 
 function isSelected(toothId: string, surface: ToothSurface): boolean {
   return props.surfaces[toothId]?.includes(surface) ?? false
@@ -124,7 +132,10 @@ async function handleKeydown(event: KeyboardEvent, toothId: string, surface: Too
         :data-surface-tooth="diagram.toothId"
         :data-surface="surface"
         @click="toggle(diagram.toothId, surface)"
-        @focus="active = { toothId: diagram.toothId, surface }"
+        @focus="handleFocus(diagram.toothId, surface, $event)"
+        @blur="emit('leave')"
+        @mouseenter="emit('enter', diagram.toothId, surface, $event)"
+        @mouseleave="emit('leave')"
         @keydown="handleKeydown($event, diagram.toothId, surface)"
       />
     </g>

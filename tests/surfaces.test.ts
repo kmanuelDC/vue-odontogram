@@ -5,8 +5,8 @@ import Odontogram from '../src/components/Odontogram.vue'
 import { getLayoutViewBox, getToothAnchors } from '../src/utils/anchors'
 import { layoutFindings } from '../src/utils/findings'
 import { ntsPeruFindingCatalog } from '../src/catalogs/nts-peru'
-import { getSurfaceDiagrams, getSurfaceName, toggleSurface } from '../src/utils/surfaces'
-import { getToothFrames } from '../src/utils/tooth-frames'
+import { getSurfaceDiagrams, getSurfaceName, surfaceMargin, toggleSurface } from '../src/utils/surfaces'
+import { getToothFrames, toothCircleRadius, toothSymbolStrokeWidth } from '../src/utils/tooth-frames'
 import { toothSurfaces } from '../src/types/surfaces'
 import type { OdontogramLayout } from '../src/utils/layout'
 import type { RenderableDentition } from '../src/utils/dentition-layout'
@@ -98,6 +98,34 @@ describe.each(combinations)('getSurfaceDiagrams (%s, %s)', (dentition, layout) =
     }
   })
 
+  it('keeps clear of the crown circle of its tooth, plus the margin', () => {
+    for (const diagram of diagrams) {
+      const frame = frames.frames.get(diagram.toothId)!
+      const { outer, center, box, size } = frame
+      const nearEdge =
+        (diagram.center.x - center.x) * outer.x + (diagram.center.y - center.y) * outer.y - diagram.size / 2
+      const circle = toothCircleRadius(box) + toothSymbolStrokeWidth(size) / 2
+
+      expect(nearEdge, diagram.toothId).toBeGreaterThanOrEqual(circle + frames.gap + surfaceMargin - 0.01)
+    }
+  })
+
+  it('follows the curve of each row without jumps between neighbours', () => {
+    const byId = new Map(diagrams.map((diagram) => [diagram.toothId, diagram]))
+    const distance = (toothId: string) => {
+      const { center } = frames.frames.get(toothId)!
+      const diagram = byId.get(toothId)!
+      return Math.hypot(diagram.center.x - center.x, diagram.center.y - center.y)
+    }
+
+    for (const row of frames.order.values()) {
+      for (const [index, toothId] of row.slice(1).entries()) {
+        const step = Math.abs(distance(toothId) - distance(row[index]))
+        expect(step, `${row[index]}/${toothId}`).toBeLessThanOrEqual(diagrams[0].size * 0.12 + 0.01)
+      }
+    }
+  })
+
   it('points the vestibular side out and the mesial side to the midline', () => {
     for (const diagram of diagrams) {
       const frame = frames.frames.get(diagram.toothId)!
@@ -110,6 +138,129 @@ describe.each(combinations)('getSurfaceDiagrams (%s, %s)', (dentition, layout) =
       expect(along(surface('mesial'), frame.mesial)).toBeGreaterThan(0)
       expect(along(surface('distal'), frame.mesial)).toBeLessThan(0)
     }
+  })
+})
+
+describe('curve fairing in the arch layout', () => {
+  const frames = framesOf('permanent', 'arch')
+  const plain = getSurfaceDiagrams(frames).diagrams
+  const faired = getSurfaceDiagrams(frames, { fairCurve: true }).diagrams
+  const byId = (diagrams: typeof plain) => new Map(diagrams.map((diagram) => [diagram.toothId, diagram.center]))
+
+  /** Turn of the path through some points at each inner point, in degrees. */
+  function turns(points: { x: number; y: number }[]): number[] {
+    return points.slice(1, -1).map((p, i) => {
+      const [a, c] = [points[i], points[i + 2]]
+      let turn = Math.atan2(c.y - p.y, c.x - p.x) - Math.atan2(p.y - a.y, p.x - a.x)
+      turn = Math.atan2(Math.sin(turn), Math.cos(turn))
+      return Math.abs((turn * 180) / Math.PI)
+    })
+  }
+
+  it('only lets the first molars give up the crown margin, never the tooth outline', () => {
+    const withoutCrownMargin: string[] = []
+
+    for (const diagram of faired) {
+      const { outer, center, box, size } = frames.frames.get(diagram.toothId)!
+      const nearEdge = (diagram.center.x - center.x) * outer.x + (diagram.center.y - center.y) * outer.y - diagram.size / 2
+      const outline = Math.hypot((box.width / 2) * outer.x, (box.height / 2) * outer.y)
+      const crown = toothCircleRadius(box) + toothSymbolStrokeWidth(size) / 2
+
+      expect(nearEdge, diagram.toothId).toBeGreaterThanOrEqual(outline + frames.gap - 0.01)
+      if (nearEdge < crown + frames.gap + surfaceMargin - 0.01) {
+        withoutCrownMargin.push(diagram.toothId)
+      }
+    }
+
+    expect(withoutCrownMargin.sort()).toEqual(['16', '26', '36', '46'])
+  })
+
+  it('makes the curve turn at 16 like the arch of the teeth does', () => {
+    const row = frames.order.get('upper-permanent')!.slice(0, 5) // 18, 17, 16, 15, 14
+    const [, atSixteen] = turns(row.map((toothId) => byId(faired).get(toothId)!))
+    const [, beforeFairing] = turns(row.map((toothId) => byId(plain).get(toothId)!))
+    const [, teeth] = turns(row.map((toothId) => frames.frames.get(toothId)!.center))
+
+    expect(beforeFairing).toBeGreaterThan(teeth + 4)
+    expect(Math.abs(atSixteen - teeth)).toBeLessThan(1)
+  })
+
+  it('keeps the primary canine in the rhythm of the incisors', () => {
+    const primary = framesOf('primary', 'arch')
+    const diagrams = getSurfaceDiagrams(primary, { fairCurve: true }).diagrams
+    const centers = byId(diagrams)
+
+    for (const [rowKey, canine] of [['upper-primary', '53'], ['lower-primary', '83']] as const) {
+      const row = primary.order.get(rowKey)!.slice(0, 6) // 55 … 51 and 61 (or 85 … 81 and 71)
+      // Turns at the first molar, the canine and the lateral incisor.
+      const [atFirstMolar, atCanine, atLateral] = turns(row.map((toothId) => centers.get(toothId)!))
+      const teeth = turns(row.map((toothId) => primary.frames.get(toothId)!.center))
+
+      // The teeth turn 32° at the canine; its diagram no longer makes that elbow.
+      expect(teeth[1], rowKey).toBeGreaterThan(30)
+      expect(atCanine, rowKey).toBeLessThan(26)
+      expect(Math.abs(atCanine - atLateral), rowKey).toBeLessThan(3)
+      expect(Math.abs(atCanine - atFirstMolar), rowKey).toBeLessThan(6)
+
+      const { outer, center, box } = primary.frames.get(canine)!
+      const diagram = diagrams.find(({ toothId }) => toothId === canine)!
+      const nearEdge = (diagram.center.x - center.x) * outer.x + (diagram.center.y - center.y) * outer.y - diagram.size / 2
+      expect(nearEdge).toBeGreaterThanOrEqual(Math.hypot((box.width / 2) * outer.x, (box.height / 2) * outer.y) + primary.gap - 0.01)
+    }
+  })
+
+  it('is used by the component in the arch layout only', () => {
+    const centerOf16 = (layout: OdontogramLayout) => {
+      let center: { x: number; y: number } | undefined
+      mount(Odontogram, {
+        props: { layout, showSurfaces: true },
+        slots: {
+          overlay: (props: { surfaceDiagrams: readonly { toothId: string; center: { x: number; y: number } }[] }) => {
+            center = props.surfaceDiagrams.find(({ toothId }) => toothId === '16')!.center
+            return []
+          },
+        },
+      })
+      return center!
+    }
+
+    expect(centerOf16('arch')).toEqual(byId(faired).get('16'))
+    const horizontal = framesOf('permanent', 'horizontal')
+    expect(centerOf16('horizontal')).toEqual(
+      getSurfaceDiagrams(horizontal, { alignRows: true }).diagrams.find(({ toothId }) => toothId === '16')!.center,
+    )
+  })
+})
+
+describe.each([
+  ['permanent', 'horizontal'],
+  ['primary', 'horizontal'],
+  ['mixed', 'horizontal'],
+] as const)('row alignment (%s, %s)', (dentition, layout) => {
+  const anchors = getToothAnchors(dentition, layout)
+  const frames = getToothFrames(anchors, getLayoutViewBox(dentition, layout), layout)
+  const aligned = getSurfaceDiagrams(frames, { alignRows: true })
+  const free = getSurfaceDiagrams(frames)
+
+  it('puts every diagram of a row on one line', () => {
+    for (const row of frames.order.values()) {
+      const heights = row.map((toothId) => aligned.diagrams.find((diagram) => diagram.toothId === toothId)!.center.y)
+      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1e-9)
+    }
+  })
+
+  it('never brings a diagram closer to its tooth than it needs', () => {
+    for (const diagram of aligned.diagrams) {
+      const { center, outer } = frames.frames.get(diagram.toothId)!
+      const own = free.diagrams.find(({ toothId }) => toothId === diagram.toothId)!
+      const along = (point: { x: number; y: number }) => (point.x - center.x) * outer.x + (point.y - center.y) * outer.y
+
+      expect(along(diagram.center), diagram.toothId).toBeGreaterThanOrEqual(along(own.center) - 1e-9)
+    }
+  })
+
+  it('does not move the teeth', () => {
+    expect(getToothAnchors(dentition, layout)).toEqual(anchors)
   })
 })
 

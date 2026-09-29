@@ -157,6 +157,8 @@ Cada pieza muestra una sola condición: si un ID aparece en varios grupos, se ap
 | `findings` | `OdontogramFinding[]` | `undefined` | Hallazgos clínicos (fractura, corona, prótesis…). Ver [Hallazgos](#hallazgos). |
 | `findingCatalog` | `FindingCatalog` | `ntsPeruFindingCatalog` | Catálogo que define nombre, símbolo y color de cada código de hallazgo. |
 | `showSurfaces` | `boolean` | `false` | Muestra el diagrama de 5 superficies junto a cada pieza. Ver [Superficies](#superficies). |
+| `showSurfaceLetters` | `boolean` | `false` | Dibuja la letra de cada superficie (V, M, O/I, D, L/P) sobre los diagramas. |
+| `surfaceShape` | `'square' \| 'circle'` | `'square'` | Forma del diagrama de superficies: cuadrado con trapecios o círculo con sectores. |
 | `surfaces` | `OdontogramSurfaces` | `{}` | Superficies seleccionadas por ID FDI; se usa con `v-model:surfaces`. |
 | `showHalf` | `OdontogramHalf` | `'full'` | `'full'`, `'upper'` o `'lower'`. Muestra una sola arcada y recorta el alto del `viewBox`; la selección de la arcada oculta se conserva. |
 
@@ -250,6 +252,10 @@ El modelo indexa por ID FDI la lista de superficies seleccionadas. Las claves (`
 
 El diagrama gira con la pieza, así que en `arch` sigue la curva del arco y en `horizontal` queda con vestibular arriba en la arcada superior y abajo en la inferior. Todos los diagramas tienen el mismo tamaño, proporcional a las piezas; el `viewBox` crece para incluirlos y las siglas y tramos de los hallazgos se desplazan más allá del diagrama.
 
+Con `surface-shape="circle"`, el diagrama es un círculo dividido en cuatro sectores (vestibular, mesial, lingual y distal) más un círculo central (oclusal o incisal). Todo lo demás (selección, hallazgos, letras, guía) funciona igual con ambas formas.
+
+Con `show-tooltip`, al pasar el cursor o enfocar una superficie se muestra su tooltip: pieza, superficie, su definición, los hallazgos de esa superficie y si está seleccionada. El slot `tooltip` recibe además `surface` y `surfaceName` (vacíos cuando el tooltip es de una pieza).
+
 Cada superficie es un `checkbox` accesible (`Tooth 11, Incisal`) con `aria-checked`. Al hacer clic, o con `Enter`/`Espacio`, se emite `update:surfaces` con un modelo nuevo (las superficies en el orden de `toothSurfaces` y sin piezas vacías) y `surface-click`. Las piezas `missing` y `extracted` muestran el diagrama atenuado y no permiten seleccionar superficies; `disabled` bloquea todas.
 
 Las superficies tienen su propia parada de tabulación: la última enfocada, la primera seleccionada o la primera superficie de la primera pieza.
@@ -259,6 +265,65 @@ Las superficies tienen su propia parada de tabulación: la última enfocada, la 
 | `←` / `→`, `Inicio` / `Fin` | Misma superficie en la pieza anterior, siguiente, primera o última de la arcada, en el orden de pantalla. |
 | `↑` / `↓` | Superficie anterior o siguiente de la pieza (vestibular, mesial, oclusal, distal, lingual). |
 | `Enter` / `Espacio` | Selecciona o deselecciona la superficie. |
+
+### Guía de superficies
+
+`SurfaceGuide` es una referencia visual de las superficies de una pieza: un diagrama grande con las letras (V, M, O/I, D, L/P) y la lista de superficies con su nombre y su definición, adaptados a la pieza (incisal, palatina…). Al pasar el cursor o enfocar una superficie, se resalta en el diagrama y en la lista. Con `findings`, dibuja y lista los hallazgos de superficie de la pieza.
+
+```vue
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { Odontogram, SurfaceGuide, toggleSurface, type OdontogramSurfaces } from '@kmanueldc/vue-odontogram'
+
+const findings = ref([{ code: 'caries', teeth: ['36'], surfaces: ['mesial'] }])
+const selectedTeeth = ref<string[]>(['36'])
+const surfaces = ref<OdontogramSurfaces>({})
+const toothId = computed(() => selectedTeeth.value.at(-1) ?? '16')
+</script>
+
+<template>
+  <Odontogram v-model="selectedTeeth" v-model:surfaces="surfaces" :findings="findings" show-surfaces />
+  <SurfaceGuide
+    :tooth-id="toothId"
+    :findings="findings"
+    :selected="surfaces[toothId]"
+    @surface-click="(surface) => (surfaces = toggleSurface(surfaces, toothId, surface))"
+  />
+</template>
+```
+
+| Prop | Descripción |
+| --- | --- |
+| `toothId` | ID FDI de la pieza. |
+| `findings` / `findingCatalog` | Hallazgos del gráfico; la guía dibuja y lista los de superficie de esta pieza. |
+| `selected` | Superficies que se muestran seleccionadas. |
+| `active` | Superficie resaltada; también se actualiza con el cursor y el foco (`update:active`). |
+| `shape` | `'square'` o `'circle'`, como `surfaceShape` del odontograma. |
+| `labels`, `notation`, `disabled` | Igual que en `Odontogram`. |
+
+Emite `surface-click` con la superficie. La orientación es la de la ficha (la del layout `horizontal`): vestibular hacia fuera y mesial hacia la línea media.
+
+`show-surface-letters` dibuja además las letras sobre los diagramas del propio odontograma.
+
+### Registro por pieza
+
+Para mostrar o editar lo registrado en una pieza (por ejemplo, desde un panel propio), la librería ofrece funciones puras sobre `findings`. No mutan la lista y no contienen reglas clínicas:
+
+```ts
+import { addSurfaceFinding, getToothRecord, removeSurfaceFinding } from '@kmanueldc/vue-odontogram'
+
+const record = getToothRecord('36', findings.value)
+record.surfaces.occlusal // hallazgos en la oclusal: [{ index, finding, definition, scope }]
+record.tooth // pieza completa, entre dos piezas, tramos que la cubren
+
+findings.value = addSurfaceFinding(findings.value, { code: 'caries', toothId: '36', surfaces: ['distal'] })
+findings.value = removeSurfaceFinding(findings.value, { index: record.surfaces.occlusal[0].index, toothId: '36', surface: 'occlusal' })
+```
+
+- `addSurfaceFinding` fusiona las superficies en un hallazgo igual (mismo código, estado, tono y color) de esa misma pieza; si no existe, lo añade.
+- `removeSurfaceFinding` quita una superficie, o todo el hallazgo de la pieza si no se indica `surface`. Divide los hallazgos compartidos con otras piezas.
+
+Cuando varios rellenos (`fill`) caen en la misma superficie, se dibujan como franjas iguales, en el orden de la lista. Los contornos (`outline`) van siempre encima de los rellenos.
 
 `toggleSurface(surfaces, toothId, surface)` aplica el mismo cambio fuera del componente y `getSurfaceName(surface, toothId)` devuelve el nombre clínico (`'incisal'`, `'palatal'`…).
 
@@ -368,7 +433,7 @@ Moverse con el teclado muestra el tooltip de la pieza enfocada y no cambia la se
 
 ## Tooltip personalizado
 
-El slot `tooltip` reemplaza el contenido por defecto y recibe `tooth`, `selected`, `condition`, `state`, `findings` y `number` (el número en la notación elegida):
+El slot `tooltip` reemplaza el contenido por defecto y recibe `tooth`, `selected`, `condition`, `state`, `findings`, `number` (el número en la notación elegida) y, en el tooltip de una superficie, `surface` y `surfaceName` (entonces `selected` y `findings` se refieren a esa superficie):
 
 ```vue
 <Odontogram v-model="selectedTeeth" :conditions="conditions">
@@ -427,6 +492,8 @@ Los textos por defecto están en inglés. La prop `labels` acepta un objeto parc
     findings: 'Hallazgos',
     surfaces: 'Superficies dentales',
     surfaceNames: { vestibular: 'Vestibular', mesial: 'Mesial', occlusal: 'Oclusal', incisal: 'Incisal', distal: 'Distal', lingual: 'Lingual', palatal: 'Palatino' },
+    surfaceDescriptions: { mesial: 'Superficie más cercana a la línea media de la boca.' },
+    surfaceGuide: 'Guía de superficies',
   }"
 />
 ```
@@ -458,7 +525,9 @@ Los colores se ajustan con variables CSS sobre `.odontogram` o un ancestro:
 | `--odontogram-surface-stroke-color` | `--odontogram-stroke-color` | Contorno del diagrama de superficies. |
 | `--odontogram-surface-hover-color` | `--odontogram-selected-color` | Superficie bajo el cursor. |
 | `--odontogram-surface-selected-color` | `#6366f1` | Superficies seleccionadas. |
-| `--odontogram-surface-focus-color` | `#4338ca` | Contorno de la superficie enfocada con el teclado. |
+| `--odontogram-surface-focus-color` | `#4338ca` | Contorno de la superficie enfocada con el teclado y resaltado de la guía. |
+| `--odontogram-surface-letter-color` | `#334155` | Letras de las superficies (gráfico y guía). |
+| `--odontogram-surface-guide-active-bg` | `#eef2ff` | Fondo de la superficie resaltada en la lista de la guía. |
 | `--odontogram-tooltip-bg` | `rgba(0, 0, 0, 0.85)` | Fondo del tooltip. |
 | `--odontogram-tooltip-fg` | `#fff` | Texto del tooltip. |
 
@@ -483,6 +552,8 @@ Los colores se ajustan con variables CSS sobre `.odontogram` o un ancestro:
 | `toothStates` | Lista de todos los `ToothState`, en orden. |
 | `ntsPeruFindingCatalog` | Catálogo de hallazgos basado en la NTS del MINSA (Perú). |
 | `toothSurfaces` | Lista de todas las `ToothSurface`, en orden. |
+| `getToothRecord(toothId, findings, catalog?)` | Hallazgos de una pieza agrupados por superficie y de pieza completa. |
+| `addSurfaceFinding(findings, input)` / `removeSurfaceFinding(findings, removal)` | Añaden o quitan un hallazgo de superficie y devuelven una lista `findings` nueva. |
 | `toggleSurface(surfaces, toothId, surface)` | Devuelve un modelo de superficies nuevo con una superficie alternada. |
 | `getSurfaceName(surface, toothId)` | Nombre clínico de una superficie en una pieza (`incisal`, `palatal`…). |
 | `getFindingScope(symbol)` | `'surface'`, `'tooth'`, `'between'` o `'span'`: dónde se dibuja un símbolo. |

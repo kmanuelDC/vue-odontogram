@@ -9,6 +9,7 @@ import { boxFromPoints, type Box } from '../utils/svg-geometry'
 import { ntsPeruFindingCatalog } from '../catalogs/nts-peru'
 import type { FindingCatalog, OdontogramFinding } from '../types/findings'
 import { layoutFindings } from '../utils/findings'
+import type { SurfaceShapeKind } from '../types/surfaces'
 import { getSurfaceDiagrams } from '../utils/surfaces'
 import { getToothFrames } from '../utils/tooth-frames'
 
@@ -22,6 +23,8 @@ export interface OdontogramOptions {
   findings?: MaybeRefOrGetter<readonly OdontogramFinding[] | undefined>
   findingCatalog?: MaybeRefOrGetter<FindingCatalog | undefined>
   showSurfaces?: MaybeRefOrGetter<boolean>
+  /** Square (default) or circular surface diagrams. */
+  surfaceShape?: MaybeRefOrGetter<SurfaceShapeKind | undefined>
   /** FDI IDs of the teeth to draw; every tooth of the dentition when omitted. */
   teeth?: MaybeRefOrGetter<readonly string[] | undefined>
 }
@@ -108,7 +111,11 @@ export function useOdontogram(options: OdontogramOptions) {
 
   const surfaceLayout = computed(() =>
     toValue(options.showSurfaces)
-      ? getSurfaceDiagrams(toothFrames.value)
+      ? getSurfaceDiagrams(toothFrames.value, {
+          fairCurve: layout() === 'arch',
+          alignRows: layout() === 'horizontal',
+          shape: toValue(options.surfaceShape),
+        })
       : { diagrams: [], reserved: 0 },
   )
 

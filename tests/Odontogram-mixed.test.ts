@@ -8,6 +8,7 @@ import { layoutFindings } from '../src/utils/findings'
 import type { OdontogramLayout } from '../src/utils/layout'
 import { findNavigationTarget } from '../src/utils/navigation'
 import { getToothNumberLabels } from '../src/utils/numbers'
+import { getSurfaceDiagrams } from '../src/utils/surfaces'
 import type { Box } from '../src/utils/svg-geometry'
 import { getToothFrames } from '../src/utils/tooth-frames'
 
@@ -101,6 +102,27 @@ describe('mixed horizontal alignment', () => {
 
     for (const [primary, permanent] of [['55', '15'], ['65', '25'], ['85', '45'], ['75', '35'], ['51', '11']]) {
       expect(Math.abs(x(primary) - x(permanent)), primary).toBeLessThan(6)
+    }
+  })
+})
+
+describe('mixed horizontal with surfaces', () => {
+  it('keeps abbreviations of the primary rows clear of the permanent numbers', () => {
+    const anchors = getToothAnchors('mixed', 'horizontal')
+    const chart = getLayoutViewBox('mixed', 'horizontal')
+    const frames = getToothFrames(anchors, chart, 'horizontal')
+    const numbers = getToothNumberLabels(anchors, chart, 'horizontal')
+    const { findings } = layoutFindings(
+      ['51', '55', '61', '65', '71', '75', '81', '85'].map((toothId) => ({ code: 'root-remnant', teeth: [toothId] })),
+      ntsPeruFindingCatalog,
+      frames,
+      getSurfaceDiagrams(frames),
+    )
+
+    for (const finding of findings) {
+      for (const label of numbers) {
+        expect(overlaps(finding.box, label.box), `${finding.teeth[0]}/${label.toothId}`).toBe(false)
+      }
     }
   })
 })

@@ -19,5 +19,14 @@ export const toothSurfaces: readonly ToothSurface[] = [
 /** Clinical name of a surface on a given tooth. */
 export type ToothSurfaceName = ToothSurface | 'incisal' | 'palatal'
 
+/**
+ * How the five-surface diagram is drawn:
+ * - `square`: a square with a central occlusal square and four trapezoids.
+ * - `circle`: a circle with a central occlusal circle and four ring sectors.
+ */
+export type SurfaceShapeKind = 'square' | 'circle'
+
+export const surfaceShapeKinds: readonly SurfaceShapeKind[] = ['square', 'circle']
+
 /** Selected surfaces keyed by FDI ID; unlisted teeth have none. */
 export type OdontogramSurfaces = Partial<Record<string, ToothSurface[]>>

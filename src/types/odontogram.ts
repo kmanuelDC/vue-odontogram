@@ -91,16 +91,29 @@ export interface OdontogramLabels {
   findingStatuses: Record<FindingStatus, string>
   /** Accessible name of the surface diagrams layer. */
   surfaces: string
+  /** Prefix of the surface line in the tooltip of a surface. */
+  surface: string
   /** Clinical surface names, e.g. "Tooth 11, Incisal". */
   surfaceNames: Record<ToothSurfaceName, string>
+  /** One-letter surface codes drawn on diagrams, e.g. `M` or `P`. */
+  surfaceLetters: Record<ToothSurfaceName, string>
+  /** What each surface is, shown by the surface guide. */
+  surfaceDescriptions: Record<ToothSurfaceName, string>
+  /** Accessible name of the surface guide. */
+  surfaceGuide: string
 }
 
 /** Labels override where nested maps can also be partially replaced. */
 export type OdontogramLabelsInput = Partial<
-  Omit<OdontogramLabels, 'chartTitles' | 'states' | 'surfaceNames' | 'findingStatuses'> & {
+  Omit<
+    OdontogramLabels,
+    'chartTitles' | 'states' | 'surfaceNames' | 'surfaceLetters' | 'surfaceDescriptions' | 'findingStatuses'
+  > & {
     chartTitles: Partial<OdontogramLabels['chartTitles']>
     states: Partial<OdontogramLabels['states']>
     surfaceNames: Partial<OdontogramLabels['surfaceNames']>
+    surfaceLetters: Partial<OdontogramLabels['surfaceLetters']>
+    surfaceDescriptions: Partial<OdontogramLabels['surfaceDescriptions']>
     findingStatuses: Partial<OdontogramLabels['findingStatuses']>
   }
 >

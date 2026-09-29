@@ -9,9 +9,16 @@ import type {
   OdontogramFinding,
 } from '../types/findings'
 import { toothSurfaces, type ToothSurface } from '../types/surfaces'
-import type { SurfaceDiagram, SurfaceDiagramLayout } from './surfaces'
+import { polygonPath, surfaceStrip, type SurfaceDiagram, type SurfaceDiagramLayout } from './surfaces'
 import { boxFromPoints, getPathBox, type Box, type Point } from './svg-geometry'
-import { halfExtent, normalize, type ToothFrame, type ToothFrames } from './tooth-frames'
+import {
+  halfExtent,
+  normalize,
+  toothCircleRadius,
+  toothSymbolStrokeWidth,
+  type ToothFrame,
+  type ToothFrames,
+} from './tooth-frames'
 
 /**
  * A drawing instruction, in viewBox coordinates, in the finding color:
@@ -160,7 +167,7 @@ function toothSymbol(
     }
     case 'circle':
       return [
-        { type: 'circle', cx: center.x, cy: center.y, r: (Math.hypot(box.width, box.height) / 2) * 0.82 },
+        { type: 'circle', cx: center.x, cy: center.y, r: toothCircleRadius(box) },
       ]
     case 'double-circle': {
       const r = size * 0.36
@@ -309,16 +316,35 @@ function spanSymbol(
   }
 }
 
-/** Areas or outlines of some surfaces of a diagram. */
+/**
+ * Areas or outlines of some surfaces of a diagram. `strip` gives, per
+ * surface, which strip of how many a fill uses when several fills share it.
+ */
 function surfaceSymbol(
   symbol: FindingSymbol,
   diagram: SurfaceDiagram,
   surfaces: readonly ToothSurface[],
+  strip: (surface: ToothSurface) => { index: number; count: number },
 ): FindingPrimitive[] {
-  const type = symbol.kind === 'fill' ? 'area' : 'path'
+  if (symbol.kind !== 'fill') {
+    return diagram.surfaces
+      .filter(({ surface }) => surfaces.includes(surface))
+      .map(({ d }) => ({ type: 'path', d }))
+  }
+
   return diagram.surfaces
     .filter(({ surface }) => surfaces.includes(surface))
-    .map(({ d }) => ({ type, d }))
+    .map((shape) => {
+      const { index, count } = strip(shape.surface)
+      return { type: 'area', d: count > 1 ? polygonPath(surfaceStrip(diagram, shape, index, count)) : shape.d }
+    })
+}
+
+/** Surfaces a surface finding covers: the listed ones, or every surface. */
+function findingSurfaces(finding: OdontogramFinding): ToothSurface[] {
+  return finding.surfaces?.length
+    ? toothSurfaces.filter((surface) => finding.surfaces!.includes(surface))
+    : [...toothSurfaces]
 }
 
 /**
@@ -396,7 +422,7 @@ export function layoutFindings(
     teeth: string[],
     primitives: FindingPrimitive[],
     size: number,
-    strokeWidth = Math.max(1, size * 0.06),
+    strokeWidth = toothSymbolStrokeWidth(size),
   ): RenderedFinding => ({
     key,
     code: finding.code,
@@ -409,6 +435,24 @@ export function layoutFindings(
     primitives,
     box: primitivesBox(primitives, strokeWidth),
   })
+
+  // Fills sharing a surface split it into strips, in the order they were given.
+  const fillsBySurface = new Map<string, number[]>()
+  findings.forEach((finding, index) => {
+    if (catalog[finding.code]?.symbol.kind !== 'fill') {
+      return
+    }
+    for (const toothId of finding.teeth) {
+      for (const surface of findingSurfaces(finding)) {
+        const key = `${toothId}:${surface}`
+        fillsBySurface.set(key, [...(fillsBySurface.get(key) ?? []), index])
+      }
+    }
+  })
+  const stripOf = (index: number, toothId: string) => (surface: ToothSurface) => {
+    const fills = fillsBySurface.get(`${toothId}:${surface}`) ?? [index]
+    return { index: fills.indexOf(index), count: fills.length }
+  }
 
   // Spans first, so abbreviations on the same teeth are placed beyond them.
   const indexed = findings.map((finding, index) => ({ finding, index }))
@@ -441,9 +485,7 @@ export function layoutFindings(
         continue
       }
 
-      const surfaces = finding.surfaces?.length
-        ? toothSurfaces.filter((surface) => finding.surfaces!.includes(surface))
-        : [...toothSurfaces]
+      const surfaces = findingSurfaces(finding)
       for (const toothId of visible) {
         const diagram = diagrams.get(toothId)!
         const strokeWidth = diagram.strokeWidth * (symbol.kind === 'outline' ? 2.5 : 1)
@@ -453,7 +495,7 @@ export function layoutFindings(
             finding,
             definition,
             [toothId],
-            surfaceSymbol(symbol, diagram, surfaces),
+            surfaceSymbol(symbol, diagram, surfaces, stripOf(index, toothId)),
             diagram.size,
             strokeWidth,
           ),
@@ -529,11 +571,36 @@ export function layoutFindings(
     }
   }
 
-  // Draw in the order the findings were given.
+  // Draw in the order the findings were given, except that surface outlines
+  // go above every fill so they stay visible on filled surfaces.
+  const layer = ({ code }: RenderedFinding) => (catalog[code]?.symbol.kind === 'outline' ? 1 : 0)
   const position = (key: string) => Number(key.split(':')[0])
-  rendered.sort((a, b) => position(a.key) - position(b.key))
+  rendered.sort((a, b) => layer(a) - layer(b) || position(a.key) - position(b.key))
 
   return { findings: rendered, issues }
+}
+
+/**
+ * Draws the surface findings of one tooth on a given diagram, e.g. the
+ * enlarged one of a surface guide. Strips and drawing order match the chart.
+ * Findings of other teeth and non-surface findings are ignored.
+ */
+export function layoutToothSurfaceFindings(
+  findings: readonly OdontogramFinding[],
+  catalog: FindingCatalog,
+  diagram: SurfaceDiagram,
+): RenderedFinding[] {
+  const { toothId, box, center, size } = diagram
+  const ownSurfaceFindings = findings
+    .filter(({ code, teeth }) => {
+      const definition = catalog[code]
+      return teeth.includes(toothId) && definition && getFindingScope(definition.symbol) === 'surface'
+    })
+    .map((finding) => ({ ...finding, teeth: [toothId] }))
+  const frame = { ...iconFrame(toothId, box), center, size }
+  const frames = { frames: new Map([[toothId, frame]]), order: new Map(), fontSize: 0, gap: 0 }
+
+  return layoutFindings(ownSurfaceFindings, catalog, frames, { diagrams: [diagram], reserved: 0 }).findings
 }
 
 /** Frame of a synthetic tooth for legend icons, in a 16 × 16 box. */

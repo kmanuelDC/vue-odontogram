@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import Odontogram from '../../src/components/Odontogram.vue'
+import SurfaceGuide from '../../src/components/SurfaceGuide.vue'
+import type { OdontogramLabelsInput } from '../../src/types/odontogram'
+import type { SurfaceShapeKind, ToothSurface } from '../../src/types/surfaces'
+import type { ToothAnchor } from '../../src/utils/anchors'
+import type { SurfaceDiagram } from '../../src/utils/surfaces'
+import { toggleSurface } from '../../src/utils/surfaces'
 import type { OdontogramFinding } from '../../src/types/findings'
 import type { OdontogramHalf, OdontogramToothStates, ToothNotation } from '../../src/types/odontogram'
 import type { OdontogramSurfaces } from '../../src/types/surfaces'
@@ -28,7 +34,7 @@ const useMixedExample = ref(query.has('age8'))
 const teeth = computed(() =>
   dentition.value === 'mixed' && useMixedExample.value ? mixedExample : undefined,
 )
-const selectedTeeth = ref<string[]>([])
+const selectedTeeth = ref<string[]>(query.get('select')?.split(',').filter(Boolean) ?? [])
 const layout = ref<OdontogramLayout>(query.get('layout') === 'horizontal' ? 'horizontal' : 'arch')
 const notations: ToothNotation[] = ['FDI', 'Universal', 'Palmer']
 const notation = ref<ToothNotation>(
@@ -42,6 +48,93 @@ const showNumbers = ref(query.has('numbers'))
 const showStates = ref(query.has('states'))
 const showFindings = ref(query.has('findings'))
 const showSurfaces = ref(query.has('surfaces'))
+const showSurfaceLetters = ref(query.has('letters'))
+const showGuide = ref(query.has('guide'))
+const showSurfacePath = ref(query.has('surfacepath'))
+const surfaceShape = ref<SurfaceShapeKind>(query.get('shape') === 'circle' ? 'circle' : 'square')
+
+/** Quadrants drawn on the patient's right side (the viewer's left). */
+const rightQuadrants = new Set([1, 4, 5, 8])
+
+/**
+ * Debug path through the surface diagram centers of each row, in arch order
+ * (right back to the midline, then to the left back), to spot jumps.
+ */
+function surfacePaths(
+  diagrams: readonly SurfaceDiagram[],
+  anchors: Readonly<Record<string, ToothAnchor>>,
+): { row: string; d: string; points: { toothId: string; x: number; y: number }[] }[] {
+  const rows = new Map<string, SurfaceDiagram[]>()
+  for (const diagram of diagrams) {
+    const row = anchors[diagram.toothId]?.row
+    if (row) {
+      rows.set(row, [...(rows.get(row) ?? []), diagram])
+    }
+  }
+
+  const along = (toothId: string) => {
+    const position = Number(toothId[1])
+    return rightQuadrants.has(Number(toothId[0])) ? -position : position
+  }
+
+  const polyline = (points: { x: number; y: number }[]) =>
+    points.map(({ x, y }, index) => `${index ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`).join(' ')
+
+  return [...rows].map(([row, rowDiagrams]) => {
+    const sorted = [...rowDiagrams].sort((a, b) => along(a.toothId) - along(b.toothId))
+    const points = sorted.map(({ toothId, center }) => ({ toothId, x: center.x, y: center.y }))
+    // The same row through the tooth centers: the distribution of the teeth,
+    // used as the reference the diagram path should follow.
+    const teeth = sorted.map(({ toothId }) => ({ toothId, ...anchors[toothId].center }))
+    return { row, points, d: polyline(points), teeth, teethD: polyline(teeth) }
+  })
+}
+type PlaygroundLanguage = 'en' | 'es'
+const language = ref<PlaygroundLanguage>(query.get('lang') === 'es' ? 'es' : 'en')
+
+/** Spanish texts, with the surface definitions of the surface guide. */
+const spanishLabels: OdontogramLabelsInput = {
+  odontogram: 'Odontograma',
+  tooth: 'Pieza',
+  type: 'Tipo',
+  selected: 'Seleccionada',
+  yes: 'Sí',
+  no: 'No',
+  condition: 'Condición',
+  findings: 'Hallazgos',
+  findingStatuses: { existing: 'Existente', planned: 'Planificado', done: 'Realizado' },
+  surfaces: 'Superficies dentales',
+  surface: 'Superficie',
+  surfaceGuide: 'Guía de superficies',
+  surfaceNames: {
+    vestibular: 'Vestibular',
+    mesial: 'Mesial',
+    occlusal: 'Oclusal',
+    incisal: 'Incisal',
+    distal: 'Distal',
+    lingual: 'Lingual',
+    palatal: 'Palatina',
+  },
+  surfaceDescriptions: {
+    vestibular: 'Cara que mira hacia los labios o las mejillas (afuera).',
+    mesial: 'Superficie que está más cerca de la línea media de la boca.',
+    occlusal: 'Superficie de masticación de molares y premolares.',
+    incisal: 'Borde filoso de corte de incisivos y caninos.',
+    distal: 'Superficie que se aleja de la línea media de la boca.',
+    lingual: 'Cara que mira hacia la lengua (dientes inferiores).',
+    palatal: 'Cara que mira hacia el paladar (dientes superiores).',
+  },
+}
+const labels = computed(() => (language.value === 'es' ? spanishLabels : undefined))
+
+/** The guide follows the last selected tooth, or a molar of the dentition. */
+const guideToothId = computed(
+  () => selectedTeeth.value.at(-1) ?? (dentition.value === 'primary' ? '54' : '16'),
+)
+
+function toggleGuideSurface(surface: ToothSurface): void {
+  selectedSurfaces.value = toggleSurface(selectedSurfaces.value, guideToothId.value, surface)
+}
 const selectedSurfaces = ref<OdontogramSurfaces>(
   query.has('surfaces') ? { 11: ['vestibular', 'mesial'], 16: ['occlusal'], 36: ['distal', 'lingual'], 51: ['occlusal'] } : {},
 )
@@ -73,6 +166,9 @@ const permanentFindings: OdontogramFinding[] = [
   { code: 'restoration', teeth: ['37'], surfaces: ['occlusal', 'vestibular'] },
   { code: 'temporary-restoration', teeth: ['46'], surfaces: ['occlusal'] },
   { code: 'restoration', teeth: ['14'], surfaces: ['distal'], color: '#7c3aed' },
+  // Two fills on one surface split it; an outline stays above a fill.
+  { code: 'caries', teeth: ['37'], surfaces: ['occlusal'] },
+  { code: 'caries', teeth: ['46'], surfaces: ['occlusal'] },
 ]
 
 const primaryFindings: OdontogramFinding[] = [
@@ -222,6 +318,18 @@ function loadPrimaryExample(): void {
           <label><input v-model="showHalf" type="radio" value="upper" /> Upper</label>
           <label><input v-model="showHalf" type="radio" value="lower" /> Lower</label>
         </fieldset>
+
+        <fieldset>
+          <legend>Surface shape</legend>
+          <label><input v-model="surfaceShape" type="radio" value="square" /> Square</label>
+          <label><input v-model="surfaceShape" type="radio" value="circle" /> Circle</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Language</legend>
+          <label><input v-model="language" type="radio" value="en" /> English</label>
+          <label><input v-model="language" type="radio" value="es" /> Español</label>
+        </fieldset>
       </div>
 
       <div class="playground__controls-row">
@@ -232,13 +340,20 @@ function loadPrimaryExample(): void {
         <label><input v-model="showLabels" type="checkbox" /> Labels</label>
         <label><input v-model="showTooltip" type="checkbox" /> Tooltip</label>
         <label><input v-model="showAnchors" type="checkbox" /> Anchors</label>
+        <label><input v-model="showSurfaceLetters" type="checkbox" /> Surface letters</label>
+        <label><input v-model="showGuide" type="checkbox" /> Guide</label>
+        <label><input v-model="showSurfacePath" type="checkbox" /> Surface path</label>
         <label v-if="dentition === 'mixed'">
           <input v-model="useMixedExample" type="checkbox" /> Mixed: age 8 example
         </label>
       </div>
     </section>
 
-    <section class="playground__chart" aria-live="polite">
+    <section
+      class="playground__chart"
+      :class="{ 'playground__chart--with-guide': showGuide && layout === 'arch' }"
+      aria-live="polite"
+    >
       <Odontogram
         v-model="selectedTeeth"
         v-model:surfaces="selectedSurfaces"
@@ -255,19 +370,57 @@ function loadPrimaryExample(): void {
         :tooth-states="toothStates"
         :findings="findings"
         :show-surfaces="showSurfaces"
+        :show-surface-letters="showSurfaceLetters"
+        :surface-shape="surfaceShape"
+        :labels="labels"
       >
-        <template v-if="showAnchors" #overlay="{ anchors }">
-          <g v-for="anchor in anchors" :key="anchor.toothId" class="playground__anchor">
-            <rect
-              :x="anchor.box.x"
-              :y="anchor.box.y"
-              :width="anchor.box.width"
-              :height="anchor.box.height"
-            />
-            <text :x="anchor.center.x" :y="anchor.center.y">{{ anchor.toothId }}</text>
-          </g>
+        <template v-if="showAnchors || showSurfacePath" #overlay="{ anchors, surfaceDiagrams }">
+          <template v-if="showAnchors">
+            <g v-for="anchor in anchors" :key="anchor.toothId" class="playground__anchor">
+              <rect
+                :x="anchor.box.x"
+                :y="anchor.box.y"
+                :width="anchor.box.width"
+                :height="anchor.box.height"
+              />
+              <text :x="anchor.center.x" :y="anchor.center.y">{{ anchor.toothId }}</text>
+            </g>
+          </template>
+          <template v-if="showSurfacePath">
+            <g
+              v-for="path in surfacePaths(surfaceDiagrams, anchors)"
+              :key="path.row"
+              class="playground__surface-path"
+              :data-row="path.row"
+            >
+              <path class="playground__tooth-path" :d="path.teethD" />
+              <circle
+                v-for="point in path.teeth"
+                :key="`tooth-${point.toothId}`"
+                class="playground__tooth-path"
+                :cx="point.x"
+                :cy="point.y"
+                r="1.6"
+              />
+              <path :d="path.d" />
+              <circle v-for="point in path.points" :key="point.toothId" :cx="point.x" :cy="point.y" r="1.6" />
+            </g>
+          </template>
         </template>
       </Odontogram>
+
+      <SurfaceGuide
+        v-if="showGuide"
+        class="playground__guide"
+        :class="layout === 'arch' ? 'playground__guide--side' : 'playground__guide--below'"
+        :tooth-id="guideToothId"
+        :findings="findings"
+        :selected="selectedSurfaces[guideToothId]"
+        :notation="notation"
+        :labels="labels"
+        :shape="surfaceShape"
+        @surface-click="toggleGuideSurface"
+      />
     </section>
 
     <section class="playground__output">
@@ -332,6 +485,40 @@ body {
   grid-column: 1 / -1;
 }
 
+.playground__chart--with-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* Arch: a side column next to the chart, diagram above its details. */
+.playground__guide--side {
+  position: sticky;
+  top: 1rem;
+  grid-template-columns: 1fr;
+}
+
+/* Horizontal: below the chart, diagram on the left and details on the right. */
+.playground__guide--below {
+  grid-template-columns: 10rem minmax(0, 1fr);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #dbeafe;
+}
+
+@media (max-width: 36rem) {
+  .playground__guide--below {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 56rem) {
+  .playground__chart--with-guide {
+    grid-template-columns: 1fr;
+  }
+}
+
 .playground h1,
 .playground h2,
 .playground p {
@@ -343,6 +530,27 @@ body {
   stroke: #f43f5e;
   stroke-dasharray: 2 2;
   stroke-width: 0.75;
+}
+
+.playground__surface-path path {
+  fill: none;
+  stroke: #f43f5e;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.playground__surface-path circle {
+  fill: #f43f5e;
+}
+
+/* Reference: the same row through the tooth centers. */
+.playground__surface-path path.playground__tooth-path {
+  stroke: #0ea5e9;
+  stroke-dasharray: 4 3;
+}
+
+.playground__surface-path circle.playground__tooth-path {
+  fill: #0ea5e9;
 }
 
 .playground__anchor text {

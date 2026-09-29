@@ -30,6 +30,7 @@ export const defaultOdontogramLabels: Readonly<OdontogramLabels> = {
     done: 'Done',
   },
   surfaces: 'Tooth surfaces',
+  surface: 'Surface',
   surfaceNames: {
     vestibular: 'Vestibular',
     mesial: 'Mesial',
@@ -39,6 +40,25 @@ export const defaultOdontogramLabels: Readonly<OdontogramLabels> = {
     lingual: 'Lingual',
     palatal: 'Palatal',
   },
+  surfaceLetters: {
+    vestibular: 'V',
+    mesial: 'M',
+    occlusal: 'O',
+    incisal: 'I',
+    distal: 'D',
+    lingual: 'L',
+    palatal: 'P',
+  },
+  surfaceDescriptions: {
+    vestibular: 'Faces the lips or cheeks (outward).',
+    mesial: 'Closest to the midline of the mouth.',
+    occlusal: 'Chewing surface of molars and premolars.',
+    incisal: 'Cutting edge of incisors and canines.',
+    distal: 'Farthest from the midline of the mouth.',
+    lingual: 'Faces the tongue (lower teeth).',
+    palatal: 'Faces the palate (upper teeth).',
+  },
+  surfaceGuide: 'Surface guide',
 }
 
 /** Merges partial overrides, including nested maps, over the defaults. */
@@ -50,6 +70,8 @@ export function resolveOdontogramLabels(labels?: OdontogramLabelsInput): Odontog
     toothTypes: { ...defaultOdontogramLabels.toothTypes, ...labels?.toothTypes },
     states: { ...defaultOdontogramLabels.states, ...labels?.states },
     surfaceNames: { ...defaultOdontogramLabels.surfaceNames, ...labels?.surfaceNames },
+    surfaceLetters: { ...defaultOdontogramLabels.surfaceLetters, ...labels?.surfaceLetters },
+    surfaceDescriptions: { ...defaultOdontogramLabels.surfaceDescriptions, ...labels?.surfaceDescriptions },
     findingStatuses: { ...defaultOdontogramLabels.findingStatuses, ...labels?.findingStatuses },
   }
 }

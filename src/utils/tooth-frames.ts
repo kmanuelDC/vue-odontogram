@@ -55,6 +55,20 @@ export function halfExtent(width: number, height: number, direction: Point): num
   return Math.min(alongX, alongY)
 }
 
+/**
+ * Radius of the circle drawn around a whole tooth (e.g. a crown). It is the
+ * widest symbol drawn over a tooth, so marks placed next to the tooth keep
+ * clear of it.
+ */
+export function toothCircleRadius(box: Box): number {
+  return (Math.hypot(box.width, box.height) / 2) * 0.82
+}
+
+/** Stroke width of the symbols drawn over a tooth of a given size. */
+export function toothSymbolStrokeWidth(size: number): number {
+  return Math.max(1, size * 0.06)
+}
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)

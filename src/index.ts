@@ -1,5 +1,6 @@
 export { default as Odontogram } from './components/Odontogram.vue'
 export { default as Tooth } from './components/Tooth.vue'
+export { default as SurfaceGuide } from './components/SurfaceGuide.vue'
 
 export { buildToothId, formatToothNumber, getPalmerQuadrant } from './utils/notation'
 export type { PalmerQuadrant } from './utils/notation'
@@ -21,9 +22,17 @@ export type {
   FindingTone,
   OdontogramFinding,
 } from './types/findings'
-export { toothSurfaces } from './types/surfaces'
-export type { OdontogramSurfaces, ToothSurface, ToothSurfaceName } from './types/surfaces'
+export { surfaceShapeKinds, toothSurfaces } from './types/surfaces'
+export type { OdontogramSurfaces, SurfaceShapeKind, ToothSurface, ToothSurfaceName } from './types/surfaces'
 export { getSurfaceName, toggleSurface } from './utils/surfaces'
+export type { SurfaceDiagram, SurfaceShape } from './utils/surfaces'
+export { addSurfaceFinding, getToothRecord, removeSurfaceFinding } from './utils/finding-records'
+export type {
+  SurfaceFindingInput,
+  SurfaceFindingRemoval,
+  ToothFindingEntry,
+  ToothRecord,
+} from './utils/finding-records'
 export { getToothAnchors, getLayoutViewBox } from './utils/anchors'
 export type { Box, Point, ToothAnchor } from './utils/anchors'
 
