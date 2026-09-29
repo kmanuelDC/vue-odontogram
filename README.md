@@ -305,6 +305,124 @@ Emite `surface-click` con la superficie. La orientación es la de la ficha (la d
 
 `show-surface-letters` dibuja además las letras sobre los diagramas del propio odontograma.
 
+### Registrar hallazgos por superficie (opción recomendada)
+
+La forma recomendada combina el odontograma con el panel de la pieza (`ToothInspector`). Un clic en una superficie del gráfico selecciona la pieza y marca esa superficie en el panel; desde el panel se elige el hallazgo y su estado y se añade. Así se trabaja sobre el gráfico sin taparlo y se ve a la vez todo lo registrado en la pieza.
+
+```vue
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import {
+  addFinding,
+  removeSurfaceFinding,
+  Odontogram,
+  ToothInspector,
+  type OdontogramFinding,
+  type OdontogramSurfaces,
+  type ToothSurface,
+} from '@kmanueldc/vue-odontogram'
+
+const findings = ref<OdontogramFinding[]>([])
+const selectedTeeth = ref<string[]>([])
+const surfaces = ref<OdontogramSurfaces>({})
+const toothId = computed(() => selectedTeeth.value[0])
+
+// Un clic en una superficie selecciona su pieza; solo esa pieza conserva superficies elegidas.
+function onSurfaceClick(tooth: { id: string }, _surface: ToothSurface, next: OdontogramSurfaces) {
+  selectedTeeth.value = [tooth.id]
+  surfaces.value = next[tooth.id] ? { [tooth.id]: next[tooth.id]! } : {}
+}
+</script>
+
+<template>
+  <Odontogram
+    v-model="selectedTeeth"
+    v-model:surfaces="surfaces"
+    :findings="findings"
+    single-select
+    show-surfaces
+    @surface-click="onSurfaceClick"
+  />
+  <ToothInspector
+    v-if="toothId"
+    :tooth-id="toothId"
+    :findings="findings"
+    :selected-surfaces="surfaces[toothId] ?? []"
+    @update:selected-surfaces="(chosen) => (surfaces = chosen.length ? { [toothId]: chosen } : {})"
+    @add-finding="(input) => (findings = addFinding(findings, input))"
+    @remove-finding="(removal) => (findings = removeSurfaceFinding(findings, removal))"
+  />
+</template>
+```
+
+- **Registrar** caries en oclusal y distal de 36: clic en O y en D del gráfico, y "Add" en el panel.
+- **Ver lo registrado:** el panel muestra todos los hallazgos de la pieza. Al pasar el cursor por una pieza, el tooltip resume sus hallazgos por superficie (`M Mesial: Caries…`), y al pasar por una superficie, los de esa superficie.
+- **Alternativas:** el [menú de superficie](#menú-de-superficie) registra sin salir del gráfico, pero lo tapa y muestra una superficie a la vez. El panel también se puede usar solo, eligiendo las superficies en su propio diagrama.
+- **Reglas clínicas:** la librería no decide qué se puede registrar; `addFinding` y `removeSurfaceFinding` solo actualizan la lista, y la aplicación valida y guarda.
+
+### Menú de superficie
+
+Con el slot `surface-menu`, un clic (o `Enter`/`Espacio`) sobre una superficie abre un menú flotante junto a ella en lugar de alternar la selección. La librería solo lo coloca y lo cierra; el contenido y el registro de hallazgos son de la aplicación:
+
+```vue
+<Odontogram :findings="findings" show-surfaces>
+  <template #surface-menu="{ toothId, surface, surfaceName, record, close }">
+    <strong>{{ toothId }} · {{ surfaceName }}</strong>
+    <button
+      v-for="entry in record.surfaces[surface]"
+      :key="entry.index"
+      @click="findings = removeSurfaceFinding(findings, { index: entry.index, toothId, surface })"
+    >
+      Quitar {{ entry.definition?.name }}
+    </button>
+    <button @click="findings = addSurfaceFinding(findings, { code: 'caries', toothId, surfaces: [surface] })">
+      Añadir caries
+    </button>
+    <button @click="close">Cerrar</button>
+  </template>
+</Odontogram>
+```
+
+| Prop del slot | Descripción |
+| --- | --- |
+| `toothId`, `tooth` | Pieza (ID FDI y definición). |
+| `surface`, `surfaceName` | Superficie y su nombre clínico en la pieza. |
+| `record` | `ToothRecord` de la pieza; se actualiza cuando cambian los `findings`. |
+| `close` | Cierra el menú y devuelve el foco a la superficie. |
+
+El menú es un `dialog` accesible, se coloca debajo de la superficie (o encima si no cabe), enfoca su primer control y se cierra también con `Esc` o con un clic fuera. `surface-click` se sigue emitiendo. No se abre en gráficos `disabled` ni en piezas `missing` o `extracted`.
+
+### Panel de la pieza
+
+`ToothInspector` muestra todo lo registrado en una pieza y permite añadir y quitar hallazgos. No guarda nada: emite eventos y la aplicación decide:
+
+```vue
+<script setup lang="ts">
+import { addFinding, removeSurfaceFinding, Odontogram, ToothInspector } from '@kmanueldc/vue-odontogram'
+
+const selectedTeeth = ref<string[]>(['36'])
+const findings = ref<OdontogramFinding[]>([])
+</script>
+
+<template>
+  <Odontogram v-model="selectedTeeth" :findings="findings" single-select show-surfaces />
+  <ToothInspector
+    v-if="selectedTeeth.length"
+    :tooth-id="selectedTeeth[0]"
+    :findings="findings"
+    @add-finding="(input) => (findings = addFinding(findings, input))"
+    @remove-finding="(removal) => (findings = removeSurfaceFinding(findings, removal))"
+  />
+</template>
+```
+
+- **Cabecera:** pieza, tipo y estado (`toothStates`).
+- **Diagrama:** el de la guía de superficies, sin la lista de texto. Un clic en una superficie la elige para el siguiente hallazgo.
+- **Listas:** hallazgos por superficie y de la pieza completa, con su estado y un botón para quitarlos. Los tramos y los hallazgos entre dos piezas se muestran, pero se quitan desde sus propias piezas.
+- **Formulario:** hallazgos del catálogo sobre superficies o en la pieza completa, con su estado.
+
+Props: `toothId`, `findings`, `findingCatalog`, `toothStates`, `labels` (textos en `labels.inspector`), `notation`, `shape`, `disabled` (solo lectura) y `selectedSurfaces` (con `v-model:selected-surfaces`, para elegir las superficies desde el gráfico; ver la [opción recomendada](#registrar-hallazgos-por-superficie-opción-recomendada)).
+
 ### Registro por pieza
 
 Para mostrar o editar lo registrado en una pieza (por ejemplo, desde un panel propio), la librería ofrece funciones puras sobre `findings`. No mutan la lista y no contienen reglas clínicas:
@@ -433,7 +551,7 @@ Moverse con el teclado muestra el tooltip de la pieza enfocada y no cambia la se
 
 ## Tooltip personalizado
 
-El slot `tooltip` reemplaza el contenido por defecto y recibe `tooth`, `selected`, `condition`, `state`, `findings`, `number` (el número en la notación elegida) y, en el tooltip de una superficie, `surface` y `surfaceName` (entonces `selected` y `findings` se refieren a esa superficie):
+El slot `tooltip` reemplaza el contenido por defecto y recibe `tooth`, `selected`, `condition`, `state`, `findings`, `number` (el número en la notación elegida) y `surfaceSummary` (los hallazgos de cada superficie; entonces `findings` solo lista los de la pieza completa). En el tooltip de una superficie recibe además `surface` y `surfaceName`, y `selected` y `findings` se refieren a esa superficie:
 
 ```vue
 <Odontogram v-model="selectedTeeth" :conditions="conditions">
@@ -528,6 +646,7 @@ Los colores se ajustan con variables CSS sobre `.odontogram` o un ancestro:
 | `--odontogram-surface-focus-color` | `#4338ca` | Contorno de la superficie enfocada con el teclado y resaltado de la guía. |
 | `--odontogram-surface-letter-color` | `#334155` | Letras de las superficies (gráfico y guía). |
 | `--odontogram-surface-guide-active-bg` | `#eef2ff` | Fondo de la superficie resaltada en la lista de la guía. |
+| `--odontogram-surface-menu-bg` / `-fg` / `-border` | `#fff` / `#1e293b` / `#cbd5e1` | Fondo, texto y borde del menú de superficie. |
 | `--odontogram-tooltip-bg` | `rgba(0, 0, 0, 0.85)` | Fondo del tooltip. |
 | `--odontogram-tooltip-fg` | `#fff` | Texto del tooltip. |
 
@@ -552,6 +671,8 @@ Los colores se ajustan con variables CSS sobre `.odontogram` o un ancestro:
 | `toothStates` | Lista de todos los `ToothState`, en orden. |
 | `ntsPeruFindingCatalog` | Catálogo de hallazgos basado en la NTS del MINSA (Perú). |
 | `toothSurfaces` | Lista de todas las `ToothSurface`, en orden. |
+| `addFinding(findings, input, catalog?)` | Añade un hallazgo a una pieza: fusiona superficies en los de superficie o añade uno de pieza completa. |
+| `getToothType(toothId)` | Tipo de una pieza FDI, p. ej. `'First Molar'` para `16`. |
 | `getToothRecord(toothId, findings, catalog?)` | Hallazgos de una pieza agrupados por superficie y de pieza completa. |
 | `addSurfaceFinding(findings, input)` / `removeSurfaceFinding(findings, removal)` | Añaden o quitan un hallazgo de superficie y devuelven una lista `findings` nueva. |
 | `toggleSurface(surfaces, toothId, surface)` | Devuelve un modelo de superficies nuevo con una superficie alternada. |

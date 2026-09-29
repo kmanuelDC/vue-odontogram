@@ -1,13 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import Odontogram from '../../src/components/Odontogram.vue'
 import SurfaceGuide from '../../src/components/SurfaceGuide.vue'
+import ToothInspector from '../../src/components/ToothInspector.vue'
 import type { OdontogramLabelsInput } from '../../src/types/odontogram'
 import type { SurfaceShapeKind, ToothSurface } from '../../src/types/surfaces'
 import type { ToothAnchor } from '../../src/utils/anchors'
 import type { SurfaceDiagram } from '../../src/utils/surfaces'
 import { toggleSurface } from '../../src/utils/surfaces'
-import type { OdontogramFinding } from '../../src/types/findings'
+import { ntsPeruFindingCatalog } from '../../src/catalogs/nts-peru'
+import {
+  addFinding,
+  addSurfaceFinding,
+  removeSurfaceFinding,
+  type SurfaceFindingRemoval,
+  type ToothFindingInput,
+} from '../../src/utils/finding-records'
+import { getFindingScope } from '../../src/utils/findings'
+import type { FindingStatus, OdontogramFinding } from '../../src/types/findings'
 import type { OdontogramHalf, OdontogramToothStates, ToothNotation } from '../../src/types/odontogram'
 import type { OdontogramSurfaces } from '../../src/types/surfaces'
 import type { OdontogramLayout } from '../../src/utils/layout'
@@ -106,6 +116,37 @@ const spanishLabels: OdontogramLabelsInput = {
   surfaces: 'Superficies dentales',
   surface: 'Superficie',
   surfaceGuide: 'Guía de superficies',
+  surfaceMenu: 'Hallazgos de la superficie',
+  states: { missing: 'Ausente', extracted: 'Extraída', implant: 'Implante', unerupted: 'No erupcionada' },
+  toothTypes: {
+    'Central Incisor': 'Incisivo central',
+    'Lateral Incisor': 'Incisivo lateral',
+    Canine: 'Canino',
+    'First Premolar': 'Primer premolar',
+    'Second Premolar': 'Segundo premolar',
+    'First Molar': 'Primer molar',
+    'Second Molar': 'Segundo molar',
+    'Third Molar': 'Tercer molar',
+    'Primary Central Incisor': 'Incisivo central temporal',
+    'Primary Lateral Incisor': 'Incisivo lateral temporal',
+    'Primary Canine': 'Canino temporal',
+    'Primary First Molar': 'Primer molar temporal',
+    'Primary Second Molar': 'Segundo molar temporal',
+  },
+  inspector: {
+    title: 'Detalle de la pieza',
+    surfaceFindings: 'Hallazgos por superficie',
+    toothFindings: 'Pieza completa',
+    noFindings: 'Sin hallazgos',
+    addFinding: 'Añadir un hallazgo',
+    finding: 'Hallazgo',
+    status: 'Estado',
+    add: 'Añadir',
+    remove: 'Quitar',
+    chooseSurfaces: 'Elige las superficies en el diagrama.',
+    onSurfaces: 'En superficies',
+    onTooth: 'En la pieza completa',
+  },
   surfaceNames: {
     vestibular: 'Vestibular',
     mesial: 'Mesial',
@@ -189,9 +230,102 @@ function forDentition<T>(permanent: T[], primary: T[]): T[] {
   return byDentition[dentition.value]
 }
 
-const findings = computed(() =>
-  showFindings.value ? forDentition(permanentFindings, primaryFindings) : undefined,
+/**
+ * Findings of the chart, editable from the inline surface menu. They start
+ * from the examples of the dentition and live only in this page.
+ */
+const recordedFindings = ref<OdontogramFinding[]>(forDentition(permanentFindings, primaryFindings))
+watch(dentition, () => {
+  recordedFindings.value = forDentition(permanentFindings, primaryFindings)
+})
+
+const findings = computed(() => (showFindings.value ? recordedFindings.value : undefined))
+
+/**
+ * How surfaces are edited: selection only (V1), an inline menu (V2), a tooth
+ * panel (V3) or the panel driven from the chart (V4, hybrid).
+ */
+type SurfaceUi = 'selection' | 'inline' | 'panel' | 'hybrid'
+const surfaceUis: SurfaceUi[] = ['selection', 'inline', 'panel', 'hybrid']
+const surfaceUi = ref<SurfaceUi>(surfaceUis.find((item) => item === query.get('surfaceUi')) ?? 'selection')
+const showPanel = computed(() => surfaceUi.value === 'panel' || surfaceUi.value === 'hybrid')
+const hybrid = computed(() => surfaceUi.value === 'hybrid')
+
+/** Catalog codes drawn on surfaces, offered by the inline menu. */
+const surfaceCodes = Object.entries(ntsPeruFindingCatalog)
+  .filter(([, definition]) => getFindingScope(definition.symbol) === 'surface')
+  .map(([code, definition]) => ({ code, name: definition.name }))
+const menuCode = ref(surfaceCodes[0].code)
+const menuStatus = ref<FindingStatus>('existing')
+const findingStatusOptions: FindingStatus[] = ['existing', 'planned', 'done']
+
+function addToSurface(toothId: string, surface: ToothSurface): void {
+  recordedFindings.value = addSurfaceFinding(recordedFindings.value, {
+    code: menuCode.value,
+    toothId,
+    surfaces: [surface],
+    ...(menuStatus.value === 'existing' ? {} : { status: menuStatus.value }),
+  })
+  // The new finding must be visible on the chart.
+  showFindings.value = true
+  showSurfaces.value = true
+}
+
+function removeFromSurface(index: number, toothId: string, surface: ToothSurface): void {
+  recordedFindings.value = removeSurfaceFinding(recordedFindings.value, { index, toothId, surface })
+}
+
+// The panel follows one tooth: with it, selecting a tooth replaces the previous one.
+watch(
+  showPanel,
+  (panel) => {
+    if (panel) {
+      singleSelect.value = true
+      selectedTeeth.value = selectedTeeth.value.slice(-1)
+    }
+  },
+  { immediate: true },
 )
+
+function addFromPanel(input: ToothFindingInput): void {
+  recordedFindings.value = addFinding(recordedFindings.value, input)
+  showFindings.value = true
+  showSurfaces.value = true
+}
+
+function removeFromPanel(removal: SurfaceFindingRemoval): void {
+  recordedFindings.value = removeSurfaceFinding(recordedFindings.value, removal)
+}
+
+/**
+ * Hybrid: a surface clicked on the chart selects its tooth, so the panel
+ * follows it, and keeps only that tooth's chosen surfaces.
+ */
+function handleSurfaceClick(tooth: { id: string }, _surface: ToothSurface, surfaces: OdontogramSurfaces): void {
+  if (!hybrid.value) {
+    return
+  }
+  selectedTeeth.value = [tooth.id]
+  selectedSurfaces.value = surfaces[tooth.id] ? { [tooth.id]: surfaces[tooth.id]! } : {}
+}
+
+/** Hybrid: surfaces chosen in the panel are the chart's selected surfaces of that tooth. */
+function setPanelSurfaces(surfaces: ToothSurface[]): void {
+  const toothId = guideToothId.value
+  selectedSurfaces.value = surfaces.length ? { [toothId]: surfaces } : {}
+}
+
+// Opens a surface on load for visual checks, e.g. ?surfaceUi=inline&open=36:occlusal
+onMounted(() => {
+  const [toothId, surface] = query.get('open')?.split(':') ?? []
+  if (toothId && surface) {
+    setTimeout(() => {
+      document
+        .querySelector(`[data-surface-tooth="${toothId}"][data-surface="${surface}"]`)
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    }, 300)
+  }
+})
 
 const permanentStates: OdontogramToothStates = {
   18: 'extracted',
@@ -320,6 +454,14 @@ function loadPrimaryExample(): void {
         </fieldset>
 
         <fieldset>
+          <legend>Surface UI</legend>
+          <label><input v-model="surfaceUi" type="radio" value="selection" /> Selection</label>
+          <label><input v-model="surfaceUi" type="radio" value="inline" /> Inline menu</label>
+          <label><input v-model="surfaceUi" type="radio" value="panel" /> Panel</label>
+          <label><input v-model="surfaceUi" type="radio" value="hybrid" /> Hybrid</label>
+        </fieldset>
+
+        <fieldset>
           <legend>Surface shape</legend>
           <label><input v-model="surfaceShape" type="radio" value="square" /> Square</label>
           <label><input v-model="surfaceShape" type="radio" value="circle" /> Circle</label>
@@ -351,7 +493,7 @@ function loadPrimaryExample(): void {
 
     <section
       class="playground__chart"
-      :class="{ 'playground__chart--with-guide': showGuide && layout === 'arch' }"
+      :class="{ 'playground__chart--with-guide': (showGuide || showPanel) && layout === 'arch' }"
       aria-live="polite"
     >
       <Odontogram
@@ -373,7 +515,49 @@ function loadPrimaryExample(): void {
         :show-surface-letters="showSurfaceLetters"
         :surface-shape="surfaceShape"
         :labels="labels"
+        @surface-click="handleSurfaceClick"
       >
+        <template v-if="surfaceUi === 'inline'" #surface-menu="{ toothId, surface, surfaceName, record, close }">
+          <div class="playground__menu">
+            <strong>{{ toothId }} · {{ surfaceName }}</strong>
+
+            <ul v-if="record.surfaces[surface].length" class="playground__menu-list">
+              <li v-for="entry in record.surfaces[surface]" :key="entry.index">
+                <span>
+                  {{ entry.definition?.name ?? entry.finding.code }}
+                  <small>({{ entry.finding.status ?? 'existing' }})</small>
+                </span>
+                <button
+                  type="button"
+                  class="playground__menu-remove"
+                  :aria-label="`Remove ${entry.definition?.name ?? entry.finding.code}`"
+                  @click="removeFromSurface(entry.index, toothId, surface)"
+                >
+                  ✕
+                </button>
+              </li>
+            </ul>
+            <p v-else class="playground__menu-empty">No findings on this surface.</p>
+
+            <label class="playground__menu-field">
+              Finding
+              <select v-model="menuCode">
+                <option v-for="option in surfaceCodes" :key="option.code" :value="option.code">
+                  {{ option.name }}
+                </option>
+              </select>
+            </label>
+            <div class="playground__menu-status" role="radiogroup" aria-label="Status">
+              <label v-for="status in findingStatusOptions" :key="status">
+                <input v-model="menuStatus" type="radio" :value="status" /> {{ status }}
+              </label>
+            </div>
+            <div class="playground__menu-actions">
+              <button type="button" @click="addToSurface(toothId, surface)">Add</button>
+              <button type="button" class="playground__menu-close" @click="close">Close</button>
+            </div>
+          </div>
+        </template>
         <template v-if="showAnchors || showSurfacePath" #overlay="{ anchors, surfaceDiagrams }">
           <template v-if="showAnchors">
             <g v-for="anchor in anchors" :key="anchor.toothId" class="playground__anchor">
@@ -410,7 +594,7 @@ function loadPrimaryExample(): void {
       </Odontogram>
 
       <SurfaceGuide
-        v-if="showGuide"
+        v-if="showGuide && !showPanel"
         class="playground__guide"
         :class="layout === 'arch' ? 'playground__guide--side' : 'playground__guide--below'"
         :tooth-id="guideToothId"
@@ -420,6 +604,22 @@ function loadPrimaryExample(): void {
         :labels="labels"
         :shape="surfaceShape"
         @surface-click="toggleGuideSurface"
+      />
+
+      <ToothInspector
+        v-if="showPanel"
+        class="playground__panel"
+        :class="layout === 'arch' ? 'playground__panel--side' : 'playground__panel--below'"
+        :tooth-id="guideToothId"
+        :findings="recordedFindings"
+        :tooth-states="toothStates"
+        :notation="notation"
+        :labels="labels"
+        :shape="surfaceShape"
+        :selected-surfaces="hybrid ? (selectedSurfaces[guideToothId] ?? []) : undefined"
+        @update:selected-surfaces="hybrid && setPanelSurfaces($event)"
+        @add-finding="addFromPanel"
+        @remove-finding="removeFromPanel"
       />
     </section>
 
@@ -507,6 +707,18 @@ body {
   border-top: 1px solid #dbeafe;
 }
 
+/* Tooth panel: same places as the guide, with its own internal layout. */
+.playground__panel--side {
+  position: sticky;
+  top: 1rem;
+}
+
+.playground__panel--below {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #dbeafe;
+}
+
 @media (max-width: 36rem) {
   .playground__guide--below {
     grid-template-columns: 1fr;
@@ -530,6 +742,52 @@ body {
   stroke: #f43f5e;
   stroke-dasharray: 2 2;
   stroke-width: 0.75;
+}
+
+.playground__menu {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.playground__menu-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.playground__menu-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.playground__menu-empty {
+  margin: 0;
+  color: #64748b;
+}
+
+.playground__menu-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.playground__menu-status,
+.playground__menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.playground .playground__menu-remove,
+.playground .playground__menu-close {
+  padding: 0.125rem 0.5rem;
+  color: #1e293b;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
 }
 
 .playground__surface-path path {

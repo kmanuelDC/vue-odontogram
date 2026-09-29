@@ -171,6 +171,44 @@ export function addSurfaceFinding(
   ]
 }
 
+/** A finding to record on one tooth: on some surfaces, or on the whole tooth. */
+export interface ToothFindingInput {
+  code: string
+  toothId: string
+  /** Surfaces, for surface findings (`fill`, `outline`). */
+  surfaces?: ToothSurface[]
+  status?: FindingStatus
+  tone?: FindingTone
+  color?: string
+}
+
+/**
+ * Records a finding on one tooth. Surface findings go through
+ * `addSurfaceFinding` (merging surfaces into the same kind of finding); any
+ * other finding is appended for the whole tooth.
+ */
+export function addFinding(
+  findings: readonly OdontogramFinding[],
+  input: ToothFindingInput,
+  catalog: FindingCatalog = ntsPeruFindingCatalog,
+): OdontogramFinding[] {
+  const definition = catalog[input.code]
+  if (definition && getFindingScope(definition.symbol) === 'surface') {
+    return addSurfaceFinding(findings, { ...input, surfaces: input.surfaces ?? [] })
+  }
+
+  return [
+    ...findings,
+    {
+      code: input.code,
+      teeth: [input.toothId],
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.tone ? { tone: input.tone } : {}),
+      ...(input.color ? { color: input.color } : {}),
+    },
+  ]
+}
+
 /** Which finding to remove, from a `ToothRecord` entry. */
 export interface SurfaceFindingRemoval {
   /** `ToothFindingEntry.index` of the finding in the same list. */

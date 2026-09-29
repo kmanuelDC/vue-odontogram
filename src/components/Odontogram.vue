@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import { useOdontogram } from '../composables/useOdontogram'
 import { useToothSelection } from '../composables/useToothSelection'
 import type {
@@ -22,14 +22,14 @@ import { getToothStateMarks, resolveToothState } from '../utils/state-marks'
 import { ntsPeruFindingCatalog } from '../catalogs/nts-peru'
 import type { FindingCatalog, OdontogramFinding } from '../types/findings'
 import { getFindingIcon } from '../utils/findings'
-import { getToothRecord } from '../utils/finding-records'
-import type { OdontogramSurfaces, SurfaceShapeKind, ToothSurface } from '../types/surfaces'
+import { getToothRecord, type ToothRecord } from '../utils/finding-records'
+import { toothSurfaces, type OdontogramSurfaces, type SurfaceShapeKind, type ToothSurface } from '../types/surfaces'
 import { getSurfaceName, surfaceCenter, toggleSurface, type SurfaceDiagram } from '../utils/surfaces'
 import { formatToothNumber } from '../utils/notation'
 import { absentToothStates } from '../utils/state-marks'
 import ConditionLabels from './ConditionLabels.vue'
 import FindingPrimitives from './FindingPrimitives.vue'
-import OdontogramTooltip, { type TooltipAnchorRect } from './OdontogramTooltip.vue'
+import OdontogramTooltip, { type TooltipAnchorRect, type TooltipSurfaceSummary } from './OdontogramTooltip.vue'
 import SurfaceDiagrams from './SurfaceDiagrams.vue'
 import Tooth from './Tooth.vue'
 
@@ -107,6 +107,27 @@ defineSlots<{
     surface?: ToothSurface
     /** Clinical name of `surface` on the tooth, e.g. "Palatal". */
     surfaceName?: string
+    /**
+     * In the tooltip of a tooth, the findings of each surface with any; then
+     * `findings` lists only the findings of the whole tooth.
+     */
+    surfaceSummary: readonly TooltipSurfaceSummary[]
+  }) => unknown
+  /**
+   * Menu opened by clicking a surface (or Enter/Space on it). When given, a
+   * surface no longer toggles its selection: the app shows its findings and
+   * records new ones, and calls `close` when done. Esc and a click outside
+   * close it too.
+   */
+  'surface-menu'?: (props: {
+    toothId: string
+    tooth: ToothDefinition
+    surface: ToothSurface
+    /** Clinical name of `surface` on the tooth, e.g. "Palatal". */
+    surfaceName: string
+    /** Everything recorded on the tooth; `record.surfaces[surface]` for this surface. */
+    record: ToothRecord
+    close: () => void
   }) => unknown
   /** SVG content drawn above the teeth, in the layout's viewBox coordinates. */
   overlay?: (props: {
@@ -224,6 +245,115 @@ function handleSurfaceToggle(toothId: string, surface: ToothSurface): void {
   emit('surface-click', toothById.value.get(toothId)!, surface, surfaces)
 }
 
+const slots = useSlots()
+
+/** Surface whose menu is open, with the polygon it is anchored to. */
+const surfaceMenu = ref<{ toothId: string; surface: ToothSurface; element: SVGElement }>()
+const surfaceMenuElement = ref<HTMLElement | null>(null)
+const surfaceMenuPosition = ref({ left: -9999, top: -9999 })
+
+/** Click, Enter or Space on a surface: opens its menu, or toggles its selection. */
+function handleSurfaceActivate(toothId: string, surface: ToothSurface, element: SVGElement): void {
+  if (!slots['surface-menu']) {
+    handleSurfaceToggle(toothId, surface)
+    return
+  }
+
+  emit('surface-click', toothById.value.get(toothId)!, surface, props.surfaces)
+  hideToothTooltip()
+  surfaceMenu.value = { toothId, surface, element }
+  void placeSurfaceMenu()
+}
+
+/** Places the menu below its surface (above when there is no room) and focuses it. */
+async function placeSurfaceMenu(): Promise<void> {
+  surfaceMenuPosition.value = { left: -9999, top: -9999 }
+  await nextTick()
+  const menu = surfaceMenuElement.value
+  const anchor = surfaceMenu.value?.element
+  if (!menu || !anchor) {
+    return
+  }
+
+  const padding = 8
+  const rect = anchor.getBoundingClientRect()
+  const { width, height } = menu.getBoundingClientRect()
+  const clamp = (value: number, maximum: number) => Math.min(Math.max(value, padding), Math.max(padding, maximum))
+  const below = rect.bottom + padding
+  const top = below + height > window.innerHeight - padding ? rect.top - height - padding : below
+
+  surfaceMenuPosition.value = {
+    left: clamp(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - padding),
+    top: clamp(top, window.innerHeight - height - padding),
+  }
+  menu
+    .querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ?.focus()
+}
+
+/** Closes the menu; by default the focus returns to its surface. */
+function closeSurfaceMenu(restoreFocus = true): void {
+  const element = surfaceMenu.value?.element
+  surfaceMenu.value = undefined
+  if (restoreFocus) {
+    element?.focus()
+  }
+}
+
+const surfaceMenuProps = computed(() => {
+  const menu = surfaceMenu.value
+  if (!menu) {
+    return undefined
+  }
+
+  return {
+    toothId: menu.toothId,
+    tooth: toothById.value.get(menu.toothId)!,
+    surface: menu.surface,
+    surfaceName: resolvedLabels.value.surfaceNames[getSurfaceName(menu.surface, menu.toothId)],
+    record: getToothRecord(menu.toothId, props.findings ?? [], props.findingCatalog),
+    close: () => closeSurfaceMenu(),
+  }
+})
+
+function handleDocumentPointerDown(event: PointerEvent): void {
+  const target = event.target as Node | null
+  if (surfaceMenu.value && target && !surfaceMenuElement.value?.contains(target) && target !== surfaceMenu.value.element) {
+    closeSurfaceMenu(false)
+  }
+}
+
+function handleDocumentKeydown(event: KeyboardEvent): void {
+  if (surfaceMenu.value && event.key === 'Escape') {
+    event.preventDefault()
+    closeSurfaceMenu()
+  }
+}
+
+watch(
+  () => Boolean(surfaceMenu.value),
+  (open) => {
+    if (open) {
+      document.addEventListener('pointerdown', handleDocumentPointerDown, true)
+      document.addEventListener('keydown', handleDocumentKeydown)
+    } else {
+      document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
+      document.removeEventListener('keydown', handleDocumentKeydown)
+    }
+  },
+)
+
+// The menu closes when its tooth or the diagrams are no longer drawn.
+watch(
+  () => surfaceMenu.value && !surfaceDiagrams.value.some(({ toothId }) => toothId === surfaceMenu.value!.toothId),
+  (gone) => gone && closeSurfaceMenu(false),
+)
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
+  document.removeEventListener('keydown', handleDocumentKeydown)
+})
+
 const stateMarks = computed(() => getToothStateMarks(anchorList.value, props.toothStates))
 
 /** Non-present states shown on the visible teeth, in a stable order. */
@@ -315,6 +445,48 @@ function showSurfaceTooltip(toothId: string, surface: ToothSurface, event: Event
     hoveredSurface.value = surface
   }
 }
+
+/**
+ * What the tooltip of a tooth shows: its whole-tooth findings, and a summary
+ * of the findings of each surface.
+ */
+const toothTooltip = computed(() => {
+  const tooth = hoveredTooth.value
+  if (!tooth || hoveredSurface.value) {
+    return undefined
+  }
+
+  const { surfaceNames, surfaceLetters, findingStatuses } = resolvedLabels.value
+  const describe = ({ finding, definition }: { finding: OdontogramFinding; definition?: { name: string } }) => {
+    const status = finding.status ?? 'existing'
+    const name = definition?.name ?? finding.code
+    return status === 'existing' ? name : `${name} (${findingStatuses[status]})`
+  }
+  const record = getToothRecord(tooth.id, props.findings ?? [], props.findingCatalog)
+  const summary: TooltipSurfaceSummary[] = toothSurfaces
+    .filter((surface) => record.surfaces[surface].length)
+    .map((surface) => {
+      const name = getSurfaceName(surface, tooth.id)
+      return {
+        surface,
+        letter: surfaceLetters[name],
+        name: surfaceNames[name],
+        findings: [...new Set(record.surfaces[surface].map(describe))],
+      }
+    })
+  // Surface findings are in the summary; the findings line keeps the rest.
+  const toothFindings = [
+    ...new Set(
+      (findingsByTooth.value.get(tooth.id) ?? [])
+        .filter(({ surfaces }) => !surfaces)
+        .map((finding) =>
+          finding.status === 'existing' ? finding.name : `${finding.name} (${findingStatuses[finding.status]})`,
+        ),
+    ),
+  ]
+
+  return { summary, findings: toothFindings }
+})
 
 /** What the tooltip shows for the hovered surface. */
 const surfaceTooltip = computed(() => {
@@ -436,7 +608,9 @@ function handleSelect(tooth: ToothDefinition): void {
         :inactive-teeth="inactiveSurfaceTeeth"
         :labels="resolvedLabels"
         :spoken-number="spokenNumberOf"
-        @toggle="handleSurfaceToggle"
+        :menu="Boolean($slots['surface-menu'])"
+        :open-menu="surfaceMenu"
+        @activate="handleSurfaceActivate"
         @enter="showSurfaceTooltip"
         @leave="hideToothTooltip"
       />
@@ -515,16 +689,17 @@ function handleSelect(tooth: ToothDefinition): void {
 
     <OdontogramTooltip
       v-if="showTooltip"
-      :active="Boolean(hoveredTooth)"
+      :active="Boolean(hoveredTooth) && !surfaceMenu"
       :tooth="hoveredTooth"
       :selected="surfaceTooltip ? surfaceTooltip.selected : hoveredTooth ? isSelected(hoveredTooth.id) : false"
       :condition="hoveredTooth ? conditionByTooth.get(hoveredTooth.id) : undefined"
       :state="hoveredTooth ? stateOf(hoveredTooth.id) : 'present'"
-      :findings="surfaceTooltip ? surfaceTooltip.findings : hoveredTooth ? findingNamesOf(hoveredTooth.id) : []"
+      :findings="surfaceTooltip ? surfaceTooltip.findings : toothTooltip ? toothTooltip.findings : []"
       :number="hoveredTooth ? numberOf(hoveredTooth.id) : undefined"
       :surface="surfaceTooltip?.surface"
       :surface-name="surfaceTooltip?.name"
       :surface-description="surfaceTooltip?.description"
+      :surface-summary="toothTooltip?.summary ?? []"
       :anchor-rect="hoveredAnchorRect"
       :labels="resolvedLabels"
     >
@@ -532,6 +707,23 @@ function handleSelect(tooth: ToothDefinition): void {
         <slot name="tooltip" v-bind="slotProps" />
       </template>
     </OdontogramTooltip>
+
+    <div
+      v-if="surfaceMenuProps && $slots['surface-menu']"
+      ref="surfaceMenuElement"
+      class="odontogram-surface-menu"
+      role="dialog"
+      :aria-label="`${resolvedLabels.surfaceMenu}: ${resolvedLabels.tooth} ${spokenNumberOf(surfaceMenuProps.toothId)}, ${surfaceMenuProps.surfaceName}`"
+      :data-menu-for="`${surfaceMenuProps.toothId}:${surfaceMenuProps.surface}`"
+      :style="{
+        position: 'fixed',
+        left: `${surfaceMenuPosition.left}px`,
+        top: `${surfaceMenuPosition.top}px`,
+        opacity: surfaceMenuPosition.left === -9999 ? 0 : 1,
+      }"
+    >
+      <slot name="surface-menu" v-bind="surfaceMenuProps" />
+    </div>
 
     <ConditionLabels
       v-if="showLabels"
@@ -708,6 +900,19 @@ function handleSelect(tooth: ToothDefinition): void {
 }
 
 /* Overlays never block tooth clicks unless a child opts in. */
+/* Surface menu: a floating panel; its content comes from the surface-menu slot. */
+.odontogram-surface-menu {
+  z-index: 1000;
+  min-width: 12rem;
+  max-width: min(22rem, calc(100vw - 16px));
+  padding: 0.75rem;
+  border: 1px solid var(--odontogram-surface-menu-border, #cbd5e1);
+  border-radius: 0.5rem;
+  color: var(--odontogram-surface-menu-fg, #1e293b);
+  background: var(--odontogram-surface-menu-bg, #fff);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 18%);
+}
+
 .odontogram__overlay {
   pointer-events: none;
 }

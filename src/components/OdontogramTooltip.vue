@@ -11,6 +11,17 @@ import { defaultOdontogramLabels } from '../utils/labels'
 
 export type { ToothVisualCondition }
 
+/** One line of the per-surface summary of a tooth. */
+export interface TooltipSurfaceSummary {
+  surface: ToothSurface
+  /** Letter of the surface on the tooth, e.g. `P`. */
+  letter: string
+  /** Clinical name, e.g. "Palatal". */
+  name: string
+  /** Findings recorded on the surface. */
+  findings: readonly string[]
+}
+
 export type TooltipPlacement =
   | 'top'
   | 'top-start'
@@ -52,6 +63,8 @@ const props = withDefaults(
     surfaceName?: string
     /** What `surface` is, from `labels.surfaceDescriptions`. */
     surfaceDescription?: string
+    /** Findings of each surface of the tooth, for the tooltip of a tooth. */
+    surfaceSummary?: readonly TooltipSurfaceSummary[]
     anchorRect?: TooltipAnchorRect
     placement?: TooltipPlacement
     margin?: number
@@ -66,6 +79,7 @@ const props = withDefaults(
     surface: undefined,
     surfaceName: undefined,
     surfaceDescription: undefined,
+    surfaceSummary: () => [],
     anchorRect: undefined,
     placement: 'top',
     margin: 10,
@@ -141,6 +155,7 @@ watch(
       :number="number ?? tooth.id"
       :surface="surface"
       :surface-name="surfaceName"
+      :surface-summary="surfaceSummary"
     >
       <template v-if="surface">
         <div>{{ labels.tooth }}: {{ number ?? tooth.id }}</div>
@@ -155,6 +170,18 @@ watch(
         <div>{{ labels.type }}: {{ labels.toothTypes[tooth.type] ?? tooth.type }}</div>
         <div v-if="state !== 'present'">{{ labels.state }}: {{ labels.states[state] }}</div>
         <div v-if="findings.length">{{ labels.findings }}: {{ findings.join(', ') }}</div>
+        <template v-if="surfaceSummary.length">
+          <div>{{ labels.surfaceSummary }}:</div>
+          <div
+            v-for="line in surfaceSummary"
+            :key="line.surface"
+            class="odontogram-tooltip__summary"
+            :data-summary-surface="line.surface"
+          >
+            <span class="odontogram-tooltip__letter">{{ line.letter }}</span>
+            {{ line.name }}: {{ line.findings.join(', ') }}
+          </div>
+        </template>
         <div>{{ labels.selected }}: {{ selected ? labels.yes : labels.no }}</div>
         <div v-if="condition?.label">{{ labels.condition }}: {{ condition.label }}</div>
       </template>
@@ -180,6 +207,17 @@ watch(
   white-space: nowrap;
   box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
   transition: opacity 150ms ease;
+}
+
+/* Per-surface summary: one indented line per surface with findings. */
+.odontogram-tooltip__summary {
+  padding-left: 0.5rem;
+}
+
+.odontogram-tooltip__letter {
+  display: inline-block;
+  min-width: 1.1em;
+  font-weight: 700;
 }
 
 /* Surface definitions are longer than the other lines, so they may wrap. */

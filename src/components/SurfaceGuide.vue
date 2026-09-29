@@ -27,6 +27,8 @@ const props = withDefaults(
     disabled?: boolean
     /** Shape of the diagram, like the chart's `surfaceShape`. */
     shape?: SurfaceShapeKind
+    /** Shows the list of surfaces next to the diagram; false keeps only the diagram. */
+    showList?: boolean
   }>(),
   {
     findings: () => [],
@@ -37,6 +39,7 @@ const props = withDefaults(
     notation: 'FDI',
     disabled: false,
     shape: 'square',
+    showList: true,
   },
 )
 
@@ -174,7 +177,7 @@ const items = computed(() =>
       </text>
     </svg>
 
-    <ul class="odontogram-surface-guide__list">
+    <ul v-if="showList" class="odontogram-surface-guide__list">
       <li v-for="item in items" :key="item.surface">
         <button
           type="button"

@@ -93,6 +93,8 @@ export interface OdontogramLabels {
   surfaces: string
   /** Prefix of the surface line in the tooltip of a surface. */
   surface: string
+  /** Heading of the per-surface summary in the tooltip of a tooth. */
+  surfaceSummary: string
   /** Clinical surface names, e.g. "Tooth 11, Incisal". */
   surfaceNames: Record<ToothSurfaceName, string>
   /** One-letter surface codes drawn on diagrams, e.g. `M` or `P`. */
@@ -101,13 +103,39 @@ export interface OdontogramLabels {
   surfaceDescriptions: Record<ToothSurfaceName, string>
   /** Accessible name of the surface guide. */
   surfaceGuide: string
+  /** Accessible name of the surface menu, e.g. "Surface findings: Tooth 16, Occlusal". */
+  surfaceMenu: string
+  /** Texts of the tooth inspector panel. */
+  inspector: {
+    /** Accessible name of the panel, followed by the tooth. */
+    title: string
+    surfaceFindings: string
+    toothFindings: string
+    noFindings: string
+    addFinding: string
+    finding: string
+    status: string
+    add: string
+    remove: string
+    /** Hint shown until surfaces are chosen for a surface finding. */
+    chooseSurfaces: string
+    /** Option groups of the finding list. */
+    onSurfaces: string
+    onTooth: string
+  }
 }
 
 /** Labels override where nested maps can also be partially replaced. */
 export type OdontogramLabelsInput = Partial<
   Omit<
     OdontogramLabels,
-    'chartTitles' | 'states' | 'surfaceNames' | 'surfaceLetters' | 'surfaceDescriptions' | 'findingStatuses'
+    | 'chartTitles'
+    | 'states'
+    | 'surfaceNames'
+    | 'surfaceLetters'
+    | 'surfaceDescriptions'
+    | 'findingStatuses'
+    | 'inspector'
   > & {
     chartTitles: Partial<OdontogramLabels['chartTitles']>
     states: Partial<OdontogramLabels['states']>
@@ -115,6 +143,7 @@ export type OdontogramLabelsInput = Partial<
     surfaceLetters: Partial<OdontogramLabels['surfaceLetters']>
     surfaceDescriptions: Partial<OdontogramLabels['surfaceDescriptions']>
     findingStatuses: Partial<OdontogramLabels['findingStatuses']>
+    inspector: Partial<OdontogramLabels['inspector']>
   }
 >
 

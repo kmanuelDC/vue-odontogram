@@ -92,6 +92,72 @@ describe('surface tooltip', () => {
   })
 })
 
+describe('per-surface summary in the tooth tooltip', () => {
+  const findings: OdontogramFinding[] = [
+    { code: 'caries', teeth: ['16'], surfaces: ['mesial', 'occlusal'] },
+    { code: 'restoration', teeth: ['16'], surfaces: ['occlusal'], status: 'planned' },
+    { code: 'pulp-treatment', teeth: ['16'] },
+  ]
+
+  it('lists whole-tooth findings apart from a line per surface', async () => {
+    const wrapper = mount(Odontogram, { props: { showSurfaces: true, findings } })
+
+    await wrapper.get('[data-tooth-id="16"]').trigger('mouseenter')
+    const tooltip = wrapper.get('[role="tooltip"]')
+    const lines = tooltip.findAll('[data-summary-surface]').map((line) => line.text())
+
+    expect(tooltip.text()).toContain('Findings: Tratamiento pulpar')
+    expect(tooltip.text()).not.toContain('Findings: Tratamiento pulpar, Lesión')
+    expect(tooltip.text()).toContain('Surfaces:')
+    expect(lines).toEqual([
+      'M Mesial: Lesión de caries dental',
+      'O Occlusal: Lesión de caries dental, Restauración definitiva (Planned)',
+    ])
+  })
+
+  it('translates the heading and passes the summary to the tooltip slot', async () => {
+    const translated = mount(Odontogram, {
+      props: { showSurfaces: true, findings, labels: { surfaceSummary: 'Superficies' } },
+    })
+    await translated.get('[data-tooth-id="16"]').trigger('mouseenter')
+    expect(translated.get('[role="tooltip"]').text()).toContain('Superficies:')
+
+    const slotted = mount(Odontogram, {
+      props: { showSurfaces: true, findings },
+      slots: {
+        tooltip: `<template #tooltip="{ surfaceSummary, findings }">{{ surfaceSummary.map((line) => line.letter).join('') }}|{{ findings.join(',') }}</template>`,
+      },
+    })
+    await slotted.get('[data-tooth-id="16"]').trigger('mouseenter')
+    expect(slotted.get('[role="tooltip"]').text()).toBe('MO|Tratamiento pulpar')
+  })
+
+  it('shows no summary for teeth without surface findings', async () => {
+    const wrapper = mount(Odontogram, { props: { showSurfaces: true, findings } })
+
+    await wrapper.get('[data-tooth-id="26"]').trigger('mouseenter')
+    expect(wrapper.get('[role="tooltip"]').text()).not.toContain('Surfaces:')
+  })
+})
+
+describe.each(['square', 'circle'] as const)('surface letters of %s diagrams', (shape) => {
+  it.each(['16', '21', '36', '44', '55', '73'])('line up on %s: V, O and L in one column, M, O and D in one row', (toothId) => {
+    const diagram = buildSurfaceDiagram(toothId, { x: 50, y: 50 }, getSurfaceAxes(toothId), 84, 1.2, shape)
+    const at = (name: string) => surfaceCenter(diagram.surfaces.find(({ surface }) => surface === name)!)
+    const [vestibular, lingual, mesial, distal, occlusal] = ['vestibular', 'lingual', 'mesial', 'distal', 'occlusal'].map(at)
+
+    expect(occlusal.x).toBeCloseTo(50, 9)
+    expect(occlusal.y).toBeCloseTo(50, 9)
+    expect(vestibular.x).toBeCloseTo(50, 9)
+    expect(lingual.x).toBeCloseTo(50, 9)
+    expect(mesial.y).toBeCloseTo(50, 9)
+    expect(distal.y).toBeCloseTo(50, 9)
+    // Opposite letters sit at the same distance from the center.
+    expect(Math.abs(vestibular.y - 50)).toBeCloseTo(Math.abs(lingual.y - 50), 9)
+    expect(Math.abs(mesial.x - 50)).toBeCloseTo(Math.abs(distal.x - 50), 9)
+  })
+})
+
 describe('square surface diagrams', () => {
   const square = buildSurfaceDiagram('16', { x: 50, y: 50 }, getSurfaceAxes('16'), 40, 1, 'square')
   const points = square.surfaces.flatMap((shape) => shape.points)

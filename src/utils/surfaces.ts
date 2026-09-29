@@ -170,10 +170,13 @@ function roundedSquarePolygons(outer: number, inner: number): Record<ToothSurfac
       return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]
     })
   }
-  // Side of a square centered on `middle` degrees, from one corner middle to the next.
+  // Side of a square centered on `middle` degrees, from one corner middle to
+  // the next: the end of one rounded corner, the straight edge (implied
+  // between both arcs) and the start of the next corner. Both halves keep
+  // all their points, so the side stays symmetric about `middle`.
   const side = (half: number, middle: number) => [
     ...arc(half, middle - 45, middle - 45, middle),
-    ...arc(half, middle + 45, middle, middle + 45).slice(1),
+    ...arc(half, middle + 45, middle, middle + 45),
   ]
   const sector = (middle: number) => [...side(outer, middle), ...side(inner, middle).reverse()]
 

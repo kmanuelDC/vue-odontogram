@@ -1,4 +1,4 @@
-import type { ToothNotation } from '../types/odontogram'
+import type { ToothNotation, ToothType } from '../types/odontogram'
 import {
   isQuadrantForDentition,
   type NumberedDentition,
@@ -74,6 +74,31 @@ function parseFdi(toothId: string): { quadrant: number; position: number; primar
   }
 
   return { quadrant, position, primary }
+}
+
+const permanentTypes: readonly ToothType[] = [
+  'Central Incisor',
+  'Lateral Incisor',
+  'Canine',
+  'First Premolar',
+  'Second Premolar',
+  'First Molar',
+  'Second Molar',
+  'Third Molar',
+]
+
+const primaryTypes: readonly ToothType[] = [
+  'Primary Central Incisor',
+  'Primary Lateral Incisor',
+  'Primary Canine',
+  'Primary First Molar',
+  'Primary Second Molar',
+]
+
+/** Type of an FDI tooth, e.g. `First Molar` for 16 or `Primary Canine` for 53. */
+export function getToothType(toothId: string): ToothType {
+  const { position, primary } = parseFdi(toothId)
+  return (primary ? primaryTypes : permanentTypes)[position - 1]
 }
 
 /** Palmer quadrant of an FDI tooth. */

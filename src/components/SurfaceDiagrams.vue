@@ -18,10 +18,15 @@ const props = defineProps<{
   labels: OdontogramLabels
   /** Number read in accessible names, in the chart's notation. */
   spokenNumber: (toothId: string) => string
+  /** Activating a surface opens a menu instead of toggling its selection. */
+  menu?: boolean
+  /** Surface whose menu is open, if any. */
+  openMenu?: { toothId: string; surface: ToothSurface }
 }>()
 
 const emit = defineEmits<{
-  toggle: [toothId: string, surface: ToothSurface]
+  /** Click, Enter or Space on a surface; `element` is its polygon. */
+  activate: [toothId: string, surface: ToothSurface, element: SVGElement]
   /** A surface is hovered or focused; the event target is its polygon. */
   enter: [toothId: string, surface: ToothSurface, event: Event]
   leave: []
@@ -65,11 +70,15 @@ function isFocusable(toothId: string, surface: ToothSurface): boolean {
   return focusable.value?.toothId === toothId && focusable.value.surface === surface
 }
 
-function toggle(toothId: string, surface: ToothSurface): void {
-  if (!props.disabled && !props.inactiveTeeth.has(toothId)) {
+function activate(toothId: string, surface: ToothSurface, event: Event): void {
+  if (!props.disabled && !props.inactiveTeeth.has(toothId) && event.currentTarget instanceof SVGElement) {
     active.value = { toothId, surface }
-    emit('toggle', toothId, surface)
+    emit('activate', toothId, surface, event.currentTarget)
   }
+}
+
+function isMenuOpen(toothId: string, surface: ToothSurface): boolean {
+  return props.openMenu?.toothId === toothId && props.openMenu.surface === surface
 }
 
 /** Left/right and Home/End move between teeth; up/down between the surfaces of a tooth. */
@@ -87,7 +96,7 @@ function target(toothId: string, surface: ToothSurface, key: ToothNavigationKey)
 async function handleKeydown(event: KeyboardEvent, toothId: string, surface: ToothSurface): Promise<void> {
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
-    toggle(toothId, surface)
+    activate(toothId, surface, event)
     return
   }
   if (!toothNavigationKeys.has(event.key)) {
@@ -124,14 +133,16 @@ async function handleKeydown(event: KeyboardEvent, toothId: string, surface: Too
         class="odontogram-surface"
         :class="{ 'odontogram-surface--selected': isSelected(diagram.toothId, surface) }"
         :d="d"
-        role="checkbox"
+        :role="menu ? 'button' : 'checkbox'"
         :aria-label="`${labels.tooth} ${spokenNumber(diagram.toothId)}, ${labels.surfaceNames[name]}`"
-        :aria-checked="isSelected(diagram.toothId, surface)"
+        :aria-checked="menu ? undefined : isSelected(diagram.toothId, surface)"
+        :aria-haspopup="menu ? 'dialog' : undefined"
+        :aria-expanded="menu ? isMenuOpen(diagram.toothId, surface) : undefined"
         :aria-disabled="disabled || inactiveTeeth.has(diagram.toothId) || undefined"
         :tabindex="!disabled && isFocusable(diagram.toothId, surface) ? 0 : -1"
         :data-surface-tooth="diagram.toothId"
         :data-surface="surface"
-        @click="toggle(diagram.toothId, surface)"
+        @click="activate(diagram.toothId, surface, $event)"
         @focus="handleFocus(diagram.toothId, surface, $event)"
         @blur="emit('leave')"
         @mouseenter="emit('enter', diagram.toothId, surface, $event)"
